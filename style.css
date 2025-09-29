@@ -1,0 +1,50 @@
+:root{
+  --pol-blue:#0b6aa2; --pol-blue-2:#1f7dbd; --pol-light:#e8f3fb; --pol-accent:#fff59d;
+  --sat:#b9dcff; --sun:#ffb3b3; --holiday:#9ad06f; --grid-border:#c9d7e3; --text:#111; --btn-bg:#eef6fc;
+}
+*{box-sizing:border-box}html,body{margin:0;padding:0;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#fff;color:var(--text)}
+header{position:sticky;top:0;background:var(--pol-light);border-bottom:1px solid #c5e0f0;padding:8px 12px;z-index:5}
+h1{margin:6px 0 8px 0;font-size:28px;text-align:center;color:var(--pol-blue)}
+.controls{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:4px}
+.controls select,.controls button{font-size:14px;padding:6px 10px}
+.legend{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:10px 12px}
+.chip{display:inline-block;padding:4px 8px;border-radius:12px;border:1px solid #cfdde8;font-size:12px;background:#fafafa}
+.chip-yellow{background:var(--pol-accent)} .chip-sat{background:var(--sat)} .chip-sun{background:var(--sun)} .chip-green{background:var(--holiday)}
+.legend-buttons{display:flex;gap:10px;justify-content:center;margin:12px;flex-wrap:wrap}
+.legend-btn{font-weight:600;font-size:16px;padding:8px 16px;border:1px solid var(--pol-blue);border-radius:8px;background:var(--btn-bg);color:var(--pol-blue);cursor:pointer;transition:.15s}
+.legend-btn:hover{background:#dff0ff;transform:translateY(-1px)} .legend-btn.active{background:var(--pol-blue);color:#fff}
+.legend-btn[data-code="X"]{background:#ffecec;color:#a40000;border-color:#a40000} .legend-btn[data-code="X"].active{background:#a40000;color:#fff}
+
+.grid{overflow:auto;margin:12px} .grid table{border-collapse:collapse;width:100%;min-width:960px}
+.grid th,.grid td{border:1px solid var(--grid-border);text-align:center;padding:6px;min-width:34px}
+.grid th.name{min-width:150px;background:#f5f8fb;position:sticky;left:0;z-index:2}
+.grid td.name{position:sticky;left:0;background:#fff;z-index:1;text-align:left;padding-left:10px}
+.grid .daynum{font-weight:700}.grid .weekday{font-size:12px} .grid .yellow{background:#fff59d}
+.grid .sat{background:var(--sat)} .grid .sun{background:var(--sun)} .grid .ferienday{background:var(--holiday)}
+.grid td.editable{cursor:text} .grid td.editable:focus{outline:2px solid var(--pol-blue);outline-offset:-2px;background:#f0f8ff}
+.grid .day-remarks td,.grid .day-remarks th{background:#fafbfc;font-size:12px;color:#333}.grid .day-remarks .name{background:#f0f4f8}
+/* Kürzel-Farben */
+td.editable.code-U{background:#cfe8ff!important}
+td.editable.code-AA{background:#ffd9a6!important}
+td.editable.code-AZA{background:#e6d5ff!important}
+td.editable.code-AZA6{background:#ffd0e6!important}
+td.editable.code-AZA12{background:#c9b2ff!important}
+td.editable.code-GV{background:#d7ffd7!important}
+td.editable.code-LG{background:#ffe0f0!important}
+td.editable.code-PE{background:#d0e7ff!important}
+td.editable.code-GAP{background:#fff2cc!important; border-bottom:2px solid #ffbf00!important}
+/* Persistente Overrides */
+td.editable.force-yellow{background:#fff59d!important}
+td.editable.no-yellow{background:#ffffff!important}
+td.editable.painting{outline:2px dashed var(--pol-blue);outline-offset:-2px}
+
+.remark-inline{display:flex;gap:8px;align-items:center;justify-content:center;margin:4px 12px 12px;flex-wrap:wrap}
+.remark-inline input{padding:6px 8px;font-size:14px;border:1px solid #cfdde8;border-radius:6px}
+.remark-inline button{padding:6px 10px;font-size:14px;border-radius:6px}
+.remarks{padding:12px;border-top:1px solid #dde6ef} textarea{width:100%;font-size:14px;padding:8px;border:1px solid #cfdde8;border-radius:6px}
+button{background:var(--pol-blue);color:#fff;border:0;border-radius:8px;cursor:pointer} button:hover{filter:brightness(.97)}
+footer{padding:10px;text-align:center;color:#667} .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#2a2a2a;color:#fff;padding:8px 12px;border-radius:8px;font-size:13px;opacity:0;transition:opacity .2s;z-index:10}
+.toast.show{opacity:.95}
+
+/* Praktikant Toggle style */
+#toggleIntern.intern-on{ background:#0b6aa2; color:#fff; border-color:#0b6aa2 }
