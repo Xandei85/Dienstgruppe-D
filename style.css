@@ -1,3 +1,11 @@
-td.editable.code-GV { background: #d1ffd1 !important; } /* hellgrün */
-td.editable.code-LG { background: #ffe0f0 !important; } /* rosa */
-td.editable.code-PE { background: #d0e0ff !important; } /* hellblau */
+/* bestehende Styles bleiben … */
+
+/* Farben für Kürzel */
+td.editable.code-U  { background: #cfe8ff !important; }   /* blau */
+td.editable.code-AA { background: #ffe5bf !important; }   /* orange */
+td.editable.code-AZA{ background: #e6d5ff !important; }   /* violett */
+
+/* NEU: GV, LG, PE */
+td.editable.code-GV { background: #d1ffd1 !important; }   /* hellgrün */
+td.editable.code-LG { background: #ffe0f0 !important; }   /* rosa */
+td.editable.code-PE { background: #d0e0ff !important; }   /* hellblau */
