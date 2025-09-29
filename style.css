@@ -1,1 +1,3 @@
-body { font-family: sans-serif; }
+td.editable.code-GV { background: #d1ffd1 !important; } /* hellgrün */
+td.editable.code-LG { background: #ffe0f0 !important; } /* rosa */
+td.editable.code-PE { background: #d0e0ff !important; } /* hellblau */
