@@ -1,1 +1,1 @@
-window.APP_CONFIG = { NAMES:['Wiesent','Puhl','Botzenhard','Sommer','Schmid'], START_PATTERN_DATE:'2026-01-02' };
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2bWN0eXFzeWRzd2VreXJ1bXpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNTk5MTEsImV4cCI6MjA3NDczNTkxMX0.GF3JYPn1bYXeXlEjkKwif6iJh7hueDWW1o9nMOmR_98
