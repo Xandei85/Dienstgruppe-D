@@ -1,0 +1,1 @@
+window.APP_CONFIG = { NAMES:['Wiesent','Puhl','Botzenhard','Sommer','Schmid'], START_PATTERN_DATE:'2026-01-02' };

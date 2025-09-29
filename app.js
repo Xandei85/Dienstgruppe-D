@@ -1,0 +1,1 @@
+console.log('App logic with GV, LG, PE support');
