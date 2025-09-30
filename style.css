@@ -1,0 +1,17 @@
+body{font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;background:#f6f7fb;color:#111}
+.topbar{background:#e9f0f7;border-bottom:2px solid #cbd8e6;padding:10px 14px}
+h1{margin:0 0 6px 0;font-size:18px}
+.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.legend{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.legend-btn{padding:6px 10px;border:1px solid #b9c7d8;border-radius:8px;background:#fff;cursor:pointer}
+.legend-btn.danger{background:#ffe8e8;border-color:#f6b5b5}
+main{padding:14px}
+.remarks textarea{width:100%;min-height:90px}
+.grid{margin-top:12px;overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:10px}
+.grid table{border-collapse:separate;border-spacing:0;width:100%;min-width:960px}
+.grid th,.grid td{border:1px solid #d5dde6;padding:6px 8px;vertical-align:top}
+.grid thead th{position:sticky;top:0;background:#edf3f8;z-index:5}
+.grid .row-label{width:200px;background:#f3f6fa;font-weight:700}
+.cell{min-height:46px}
+.cell.yellow{background:#fff6bf}
+.footer{padding:10px 14px;color:#333}
