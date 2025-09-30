@@ -4,8 +4,8 @@
 
 window.AppConfig = {
   // ⚠️ Anpassen:
-  supabaseUrl: "https://DEINE-PROJEKT-URL.supabase.co",
-  supabaseKey: "DEIN-ANON-API-KEY",
+  supabaseUrl: "https://bvmctyqsydswekyrumzn.supabase.co",
+  supabaseKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ2bWN0eXFzeWRzd2VreXJ1bXpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNTk5MTEsImV4cCI6MjA3NDczNTkxMX0.GF3JYPn1bYXeXlEjkKwif6iJh7hueDWW1o9nMOmR_98",
 
   // Optional: Namen anpassen
   tableName: "schedules",
