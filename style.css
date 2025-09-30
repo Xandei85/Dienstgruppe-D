@@ -1,0 +1,125 @@
+/* Minimaler, klarer Look */
+:root{
+  --bg:#0b0e14;
+  --panel:#121826;
+  --text:#e6e6e6;
+  --muted:#9aa5b1;
+  --accent:#4da3ff;
+  --yellow:#fff3a3;
+  --line:#1f2937;
+  --green:#86efac;
+  --danger:#ff7a7a;
+}
+
+*{box-sizing:border-box}
+
+html,body{
+  height:100%;
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+}
+
+.app-header{
+  position:sticky; top:0; z-index:10;
+  background:linear-gradient(180deg, rgba(18,24,38,.95), rgba(18,24,38,.85));
+  border-bottom:1px solid var(--line);
+  padding:12px 16px;
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+}
+.app-header h1{font-size:20px; margin:0; font-weight:700}
+.controls{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.controls .divider{width:1px; height:28px; background:var(--line); margin:0 8px}
+
+button{
+  background:#172036;
+  color:var(--text);
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:8px 12px;
+  cursor:pointer;
+  transition:transform .06s ease, background .2s ease, border-color .2s ease;
+  font-weight:600;
+}
+button:hover{background:#1d2946}
+button:active{transform:translateY(1px)}
+
+main{padding:16px}
+.meta{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:10px}
+.meta .hint{color:var(--muted)}
+
+.table-wrapper{
+  overflow:auto;
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:8px;
+  box-shadow:0 10px 30px rgba(0,0,0,.25);
+}
+
+table{
+  width:max(900px,100%);
+  border-collapse:separate;
+  border-spacing:0;
+}
+thead th{
+  position:sticky; top:0;
+  background:#0f1526;
+  border-bottom:2px solid var(--line);
+  padding:10px;
+  font-size:14px;
+}
+.name-col{position:sticky; left:0; z-index:1; background:#0f1526}
+tbody th.name-col{z-index:2; background:#0f1526; border-right:1px solid var(--line)}
+
+td, th{
+  border-right:1px solid var(--line);
+  border-bottom:1px solid var(--line);
+  padding:8px;
+  min-width:120px;
+  vertical-align:top;
+}
+
+tbody td{background:#0d1322}
+tbody tr:nth-child(odd) td{background:#0c1120}
+
+td.yellow{background:var(--yellow); color:#222}
+td .badge{
+  display:inline-block;
+  padding:2px 6px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+  margin:2px 4px 2px 0;
+  border:1px solid rgba(255,255,255,.1);
+  background:#1b2540;
+}
+td.yellow .badge{background:#fff; border-color:#ddd}
+
+.badge.atza6::after{content:"ATZA 6"}
+.badge.atza12::after{content:"ATZA 12"}
+.badge.praktikant{background:var(--green); color:#092e14}
+.badge.praktikant::after{content:"Praktikant"}
+
+td.selected{outline:2px solid var(--accent); outline-offset:-2px}
+
+tfoot .remarks-row th{background:#10162a}
+tfoot .remarks-row td.remark{
+  background:#0f1628;
+  min-height:48px;
+}
+
+[contenteditable="true"]{
+  outline:none;
+}
+[contenteditable="true"]:focus{
+  box-shadow:inset 0 0 0 2px var(--accent);
+  border-radius:6px;
+}
+
+/* Small screens */
+@media (max-width: 900px){
+  td, th{min-width:100px}
+  button{padding:6px 10px}
+}

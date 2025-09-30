@@ -1,0 +1,18 @@
+# Netlify Konfiguration
+[build]
+  publish = "."
+  command = ""
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self';"
+
+# Optional: SPA-Fallback (nicht zwingend nötig hier, aber hilfreich)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

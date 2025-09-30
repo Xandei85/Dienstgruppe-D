@@ -1,0 +1,89 @@
+{
+  "headers": [
+    "Name",
+    "Mo",
+    "Di",
+    "Mi",
+    "Do",
+    "Fr",
+    "Sa",
+    "So"
+  ],
+  "rows": [
+    {
+      "name": "Muster A",
+      "cells": [
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        },
+        {
+          "html": "FDL",
+          "yellow": false
+        }
+      ]
+    },
+    {
+      "name": "Muster B",
+      "cells": [
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        },
+        {
+          "html": "",
+          "yellow": false
+        }
+      ]
+    }
+  ],
+  "remarks": [
+    "",
+    "",
+    "",
+    "",
+    "",
+    "",
+    ""
+  ]
+}
