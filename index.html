@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schichtplan Polizei</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>
+    <img id="brandLogo" src="./assets/logo.png" alt="Logo" onerror="this.style.display='none'" style="height:28px;vertical-align:middle;margin-right:8px;">
+    Schichtplan Polizei
+  </h1>
+  <div class="controls">
+    <span>Ich bin:</span>
+    <select id="meSelect"></select>
+    <button id="prevMonth" aria-label="Voriger Monat">◀</button>
+    <strong id="monthTitle"></strong>
+    <button id="nextMonth" aria-label="Nächster Monat">▶</button>
+  </div>
+  <div class="legend">
+    <button class="legend-btn" data-code="U"><strong>U</strong></button>
+    <button class="legend-btn" data-code="AA"><strong>AA</strong></button>
+    <button class="legend-btn" data-code="AZA"><strong>AZA</strong></button>
+    <button class="legend-btn" data-code="AZA6"><strong>AZA6</strong></button>
+    <button class="legend-btn" data-code="AZA12"><strong>AZA12</strong></button>
+    <button class="legend-btn" data-code="W2Y">Weiß→Gelb</button>
+    <button class="legend-btn" data-code="Y2W">Gelb→Weiß</button>
+    <button class="legend-btn" data-code="GV">GV</button>
+    <button class="legend-btn" data-code="LG">LG</button>
+    <button class="legend-btn" data-code="PE">PE</button>
+    <button class="legend-btn" data-code="BEER">🍺</button>
+    <button class="legend-btn" data-code="PARTY">🎉</button>
+    <button class="legend-btn danger" data-code="X"><strong>X</strong></button>
+  </div>
+</header>
+
+<main>
+  <section class="remarks">
+    <label for="monthlyRemarks">Bemerkungen (Monat):</label>
+    <textarea id="monthlyRemarks" placeholder="Notizen..."></textarea>
+    <div><button id="saveRemarks">Bemerkungen speichern</button></div>
+  </section>
+
+  <section id="grid" class="grid"></section>
+
+  <h2 style="margin-top:18px;margin-bottom:6px;font-size:16px;">Zusätzliche Planung</h2>
+  <section id="gridExtra" class="grid"></section>
+</main>
+
+<footer class="footer">
+  <small>Schichtplan PWA v4.6.0 (classic, no SW) • Extra-Tabelle • 🎉</small>
+</footer>
+
+<script>
+// INLINE CONFIG – passe hier deine Werte an
+window.APP_CONFIG = {
+  PROJECT_NAME: "Schichtplan Polizei",
+  NAMES: ["Wiesent","Puhl","Botzenhard","Sommer","Schmid"],
+  YEAR_START: 2026,
+  YEAR_END: 2030,
+  START_PATTERN_DATE: "2026-01-02",
+  PATTERN_SHIFT: 0
+  // Optional: SUPABASE_URL, SUPABASE_ANON_KEY – falls du später Cloud-Sync einbaust
+};
+</script>
+
+<script src="supabaseClient.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
