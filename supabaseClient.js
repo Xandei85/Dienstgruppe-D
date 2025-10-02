@@ -1,1 +1,0 @@
-window.SB={saveRemarks:async()=>{},loadRemarks:async()=>''};
