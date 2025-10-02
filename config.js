@@ -1,0 +1,1 @@
+window.APP_CONFIG={PROJECT_NAME:'Dienstgruppe D',NAMES:['Wiesent','Puhl','Botzenhard','Sommer','Schmid']};
