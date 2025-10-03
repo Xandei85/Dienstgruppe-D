@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Schichtplan Polizei</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0b6aa2">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <img src="assets/logo.png" alt="Polizei Berchtesgaden Logo" id="brandLogo" />
+      <h1 id="monthTitle"></h1>
+    </div>
+
+    <div class="controls">
+      <label for="meSelect">Ich bin:</label>
+      <select id="meSelect"></select>
+      <button id="prevMonth" aria-label="Vorheriger Monat" title="Vorheriger Monat">◀</button>
+      <select id="monthSelect"></select>
+      <select id="yearSelect"></select>
+      <button id="nextMonth" aria-label="Nächster Monat" title="Nächster Monat">▶</button>
+      <button id="installBtn" hidden>App installieren</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="legend">
+      <span class="chip chip-yellow">Arbeitstag</span>
+      <span class="chip chip-sat">Sa</span>
+      <span class="chip chip-sun">So</span>
+      <span class="chip chip-green">Ferien (BY)</span>
+    </div>
+
+    <div class="legend-buttons">
+      <button class="legend-btn" data-code="U"><strong>U</strong></button>
+      <button class="legend-btn" data-code="AA"><strong>AA</strong></button>
+      <button class="legend-btn" data-code="AZA"><strong>AZA</strong></button>
+      <button class="legend-btn" data-code="AZA6"><strong>AZA6</strong></button>
+      <button class="legend-btn" data-code="AZA12"><strong>AZA12</strong></button>
+      <button class="legend-btn" data-code="W2Y"><strong>Weiß→Gelb</strong></button>
+      <button class="legend-btn" data-code="Y2W"><strong>Gelb→Weiß</strong></button>
+      <button class="legend-btn" data-code="BEER" title="Bierglas">🍺</button>
+      <button class="legend-btn" data-code="GV"><strong>GV</strong></button>
+      <button class="legend-btn" data-code="LG"><strong>LG</strong></button>
+      <button class="legend-btn" data-code="PE"><strong>PE</strong></button>
+      <button class="legend-btn" data-code="X"><strong>X</strong></button>
+    </div>
+
+    <div class="remark-inline">
+      <label>Tag:</label>
+      <input id="remarkDay" type="number" min="1" step="1" style="width:70px">
+      <label>Text:</label>
+      <input id="remarkText" type="text" placeholder="Bemerkung…">
+      <button id="remarkApply">Übernehmen</button>
+    </div>
+
+    <div id="grid" class="grid"></div>
+
+    <div class="remarks">
+      <label for="monthlyRemarks">Bemerkungen (Monat):</label>
+      <textarea id="monthlyRemarks" placeholder="Notizen…" rows="3"></textarea>
+      <button id="saveRemarks">Bemerkungen speichern</button>
+    </div>
+  </main>
+
+  <footer>
+    <small>Schichtplan PWA v4.4.3 • Fix Monats-Bemerkungen • Bayern-Palette • Logo</small>
+  </footer>
+
+  <div class="toast" id="toast"></div>  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./config.js"></script>
+  <script src="./supabaseClient.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
