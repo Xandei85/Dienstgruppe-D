@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Dienstgruppe D</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <h1>Dienstgruppe D</h1>
+    <div class="controls">
+      <label for="meSelect">Ich bin:</label>
+      <select id="meSelect"></select>
+      <button id="prevBtn" aria-label="Vormonat">◀</button>
+      <select id="monthSelect"></select>
+      <select id="yearSelect"></select>
+      <button id="nextBtn" aria-label="Nächster Monat">▶</button>
+    </div>
+    <div class="legend">
+      <span class="chip chip-yellow">Arbeitstag</span>
+      <span class="chip chip-sat">Sa</span>
+      <span class="chip chip-sun">So</span>
+      <span class="chip chip-green">Ferien (BY)</span>
+    </div>
+    <div class="legend-buttons" id="legendTop"></div>
+  </header>
+  <main>
+    <div class="grid" id="gridMain"></div>
+    <div class="remarks">
+      <label for="remarksTA">Bemerkungen (Monat):</label>
+      <textarea id="remarksTA" rows="4" placeholder="Notizen..."></textarea>
+      <button id="saveRemarksBtn">Bemerkungen speichern</button>
+    </div>
+    <!-- Zusätzliche Planung (kein eigener Button-Satz erforderlich) -->
+    <div class="grid" id="gridExtra"></div>
+  </main>
+  <footer>
+    Schichtplan PWA v4.6.12 – Classic Layout • Bayern‑Palette
+  </footer>
+  <div class="toast" id="toast"></div>
+  <!-- Supabase client library for optional cloud storage -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script src="supabaseClient.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
