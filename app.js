@@ -451,6 +451,10 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (value === 'AZA') cell.classList.add('code-AZA');
     else if (value === 'AZA6') cell.classList.add('code-AZA6');
     else if (value === 'AZA12') cell.classList.add('code-AZA12');
+      else if (value == "U2") cell.classList.add("code-U2");
+else if (value == "S") cell.classList.add("code-S");
+else if (value == "F") cell.classList.add("code-F");
+else if (value == "N") cell.classList.add("code-N");
       else if (value === "U2") cell.classList.add('code-u2');
 else if (value === "S") cell.classList.add('code-s');
 else if (value === "F") cell.classList.add('code-f');
