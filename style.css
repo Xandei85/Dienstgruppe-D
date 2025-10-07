@@ -269,3 +269,7 @@ footer {
   .legend button, .legend .legend-btn{ padding: 8px 10px; font-size: 14px; }
   .grid table{ min-width: 820px; }
 }
+/* Matcht die Klassen, die app.js setzt */
+.code-U2 { background: #cce5ff; }                    /* U2 hellblau */
+.code-S, .code-F, .code-N, .code-U { background: #fff2cc; }  /* S/F/N/U gelb */
+
