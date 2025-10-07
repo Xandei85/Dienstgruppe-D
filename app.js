@@ -108,6 +108,11 @@ document.addEventListener('DOMContentLoaded', () => {
     { code: 'PE',   label: 'PE' },
     { code: 'STAR', label: '★' },
     { code: 'X',    label: 'X' }
+      { code: 'U2', label: 'U2' },
+  { code: 'S',  label: 'S'  },
+  { code: 'F',  label: 'F'  },
+  { code: 'N',  label: 'N'  },
+
   ];
 
   // Erstelle Legenden-Buttons in einem Container
@@ -364,6 +369,11 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'GV': codeClass = 'code-GV'; break;
             case 'LG': codeClass = 'code-LG'; break;
             case 'PE': codeClass = 'code-PE'; break;
+                case 'U2': codeClass = 'code-U2'; break;
+  case 'S':  codeClass = 'code-S';  break;
+  case 'F':  codeClass = 'code-F';  break;
+  case 'N':  codeClass = 'code-N';  break;
+
             default: break;
           }
         }
