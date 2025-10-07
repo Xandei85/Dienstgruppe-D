@@ -246,3 +246,26 @@ footer {
 .toast.show {
   opacity: 1;
 }
+
+/* === PATCH v4.6.12: neue Codes & Mobile === */
+.cell.u2 { background: #cce5ff; }           /* U2 hellblau */
+.cell.s, .cell.f, .cell.n, .cell.u { background: #fff2cc; } /* S/F/N/U gelb */
+
+#panelToggle{
+  position: sticky; top: 6px; left: 6px; z-index: 20;
+  padding: 6px 10px; border:1px solid #b9c7d8; border-radius:10px;
+  background:#fff; cursor:pointer; opacity:.95;
+}
+#topbar{ position: sticky; top:0; z-index:10; }
+#topbar[data-collapsed="true"] .controls,
+#topbar[data-collapsed="true"] .legend,
+#topbar[data-collapsed="true"] #legendTop { display:none; }
+#topbar[data-collapsed="true"] h1 { margin-bottom: 6px; }
+
+@media (max-width: 820px){
+  h1{ font-size: 22px; }
+  .controls label, .controls span, .controls strong{ font-size: 14px; }
+  .controls button{ padding: 6px 8px; }
+  .legend button, .legend .legend-btn{ padding: 8px 10px; font-size: 14px; }
+  .grid table{ min-width: 820px; }
+}
