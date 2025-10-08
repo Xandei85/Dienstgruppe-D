@@ -93,27 +93,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Definition der Legenden-Codes und Beschriftungen
   // Legende mit allen Codes: Grundschichten, Umschalter, Emojis und Sondercodes
-  const codes = [
-    { code: 'U',    label: 'U' },
-    { code: 'AA',   label: 'AA' },
-    { code: 'AZA',  label: 'AZA' },
-    { code: 'AZA6', label: 'AZA6' },
-    { code: 'AZA12',label: 'AZA12' },
-    { code: 'W2Y',  label: 'Weiß→Gelb' },
-    { code: 'Y2W',  label: 'Gelb→Weiß' },
-    { code: 'BEER', label: '🍺' },
-    { code: 'PARTY',label: '🎉' },
-    { code: 'GV',   label: 'GV' },
-    { code: 'LG',   label: 'LG' },
-    { code: 'PE',   label: 'PE' },
-    { code: 'STAR', label: '★' },
-    { code: 'X',    label: 'X' }
-      { code: 'U2', label: 'U2' },
-  { code: 'S',  label: 'S'  },
-  { code: 'F',  label: 'F'  },
-  { code: 'N',  label: 'N'  },
-
-  ];
+  // Definition der Legenden-Codes und Beschriftungen
+// Legende mit allen Codes: Grundschichten, Umschaltungen, Extras
+const codes = [
+  { code: '0', label: '0' },
+  { code: 'AA', label: 'AA' },
+  { code: 'AZA', label: 'AZA' },
+  { code: 'AZA6', label: 'AZA6' },
+  { code: 'AZA12', label: 'AZA12' },
+  { code: 'W2Y', label: 'Weiß–Gelb' },
+  { code: 'Y2W', label: 'Gelb–Weiß' },
+  { code: 'BEER', label: '🍺' },
+  { code: 'PARTY', label: '🎉' },
+  { code: 'GV', label: 'GV' },
+  { code: 'LG', label: 'LG' },
+  { code: 'PE', label: 'PE' },
+  { code: 'STAR', label: '★' },
+  { code: 'X', label: 'X' },
+  { code: 'U2', label: 'U2' },
+  { code: 'S', label: 'S' },
+  { code: 'F', label: 'F' },
+  { code: 'N', label: 'N' }
+];
 
   // Erstelle Legenden-Buttons in einem Container
   function buildLegend(container) {
