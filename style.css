@@ -273,3 +273,19 @@ footer {
 .code-U2 { background: #cce5ff; }                    /* U2 hellblau */
 .code-S, .code-F, .code-N, .code-U { background: #fff2cc; }  /* S/F/N/U gelb */
 
+
+
+/* === PATCH: neue Codes === */
+td.code-u2 { background: #cfe3ff; }  /* eigene Farbe für U2 */
+td.code-s, td.code-f, td.code-n { background: #fff4b8; } /* neutral gelb wie 'U' */
+
+
+/* === PATCH: Mobile Tweaks === */
+@media (max-width: 480px) {
+  header h1 { font-size: 18px; }
+  .controls label { display:none; }
+  .controls select, .controls button { padding: 4px 6px; font-size: 12px; }
+  .legend-buttons button { padding: 4px 6px; font-size: 12px; }
+  .grid { overflow-x: auto; }
+  table { min-width: 800px; }
+}

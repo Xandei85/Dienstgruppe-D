@@ -94,7 +94,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Definition der Legenden-Codes und Beschriftungen
   // Legende mit allen Codes: Grundschichten, Umschalter, Emojis und Sondercodes
   const codes = [
-    { code: 'U',    label: 'U' },
+            { code: 'N', label: 'N' },
+{ code: 'F', label: 'F' },
+{ code: 'S', label: 'S' },
+{ code: 'U2', label: 'U2' },
+{ code: 'U',    label: 'U' },
     { code: 'AA',   label: 'AA' },
     { code: 'AZA',  label: 'AZA' },
     { code: 'AZA6', label: 'AZA6' },
@@ -445,8 +449,8 @@ document.addEventListener('DOMContentLoaded', () => {
     cell.classList.remove(
       'code-U','code-AA','code-AZA','code-AZA6','code-AZA12',
       'code-GV','code-LG','code-PE'
-    );
-    if (value === 'U') cell.classList.add('code-U');
+    , 'code-u2','code-s','code-f','code-n');
+    if (['U','S','F','N'].includes(value)) cell.classList.add('code-U');
     else if (value === 'AA') cell.classList.add('code-AA');
     else if (value === 'AZA') cell.classList.add('code-AZA');
     else if (value === 'AZA6') cell.classList.add('code-AZA6');
