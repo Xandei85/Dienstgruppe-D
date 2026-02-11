@@ -303,7 +303,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!name) throw new Error('Kein Name angegeben');
 
     // Robust gegen Groß/Klein + Leerzeichen: wir holen alle Datensätze und vergleichen clientseitig
-    const { data: allRows, error: selErr } = await supabase
+    const { data: allRows, error: selErr } = await window.supabase
       .from('mitarbeiter')
       .select('id,name,aktiv');
 
@@ -314,7 +314,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (existing) {
       // existiert schon -> (re)aktivieren + Name sauber speichern
-      const { error: updErr } = await supabase
+      const { error: updErr } = await window.supabase
         .from('mitarbeiter')
         .update({ name: name, aktiv: true })
         .eq('id', existing.id);
@@ -322,7 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const { error: insErr } = await supabase
+    const { error: insErr } = await window.supabase
       .from('mitarbeiter')
       .insert([{ name: name, aktiv: true }]);
     if (insErr) throw insErr;
@@ -332,7 +332,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const name = String(rawName || '').trim();
     if (!name) throw new Error('Kein Name angegeben');
 
-    const { data: allRows, error: selErr } = await supabase
+    const { data: allRows, error: selErr } = await window.supabase
       .from('mitarbeiter')
       .select('id,name,aktiv');
 
@@ -342,7 +342,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const row = (allRows || []).find(r => norm(r.name) === norm(name));
     if (!row) throw new Error('Name nicht gefunden in Supabase');
 
-    const { error: updErr } = await supabase
+    const { error: updErr } = await window.supabase
       .from('mitarbeiter')
       .update({ aktiv: false })
       .eq('id', row.id);
@@ -358,6 +358,7 @@ document.addEventListener('DOMContentLoaded', () => {
       await reloadNamesAndRender();
       showToast('Mitarbeiter hinzugefügt');
     } catch (e) {
+      console.error('Add employee failed:', e);
       showToast('Fehler beim Hinzufügen');
     }
   }
@@ -378,6 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       showToast('Mitarbeiter entfernt (deaktiviert)');
     } catch (e) {
+      console.error('Remove employee failed:', e);
       showToast('Fehler beim Entfernen');
     }
   }
@@ -572,7 +574,20 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('mouseup', () => { isPainting = false; });
 
   // -------------------------------
-  // Behandlung einer einzelnen Zelle beim Bemalen
+  
+
+    // Klick auf Namen: setzt "Ich bin" auf diese Zeile (nur Auswahl, kein Design-Eingriff)
+    container.querySelectorAll('tbody td.name').forEach(td => {
+      td.addEventListener('click', () => {
+        const n = (td.textContent || '').trim();
+        const exists = Array.from(meSelect.options).some(o => o.value === n);
+        if (exists) {
+          meSelect.value = n;
+          showToast('Ausgewählt: ' + n);
+        }
+      });
+    });
+// Behandlung einer einzelnen Zelle beim Bemalen
   function handleCell(cell) {
     const name = cell.dataset.name;
     const day  = parseInt(cell.dataset.day, 10);
