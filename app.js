@@ -1,12 +1,7 @@
-// Hauptskript für den Schichtplan (v4.6.10)
+// Hauptskript für den Schichtplan (v4.6.11 - Mitarbeiterverwaltung ohne Login)
 
 document.addEventListener('DOMContentLoaded', () => {
   const CFG = window.APP_CONFIG || {};
-  const names = CFG.NAMES || [];
-  // Zusätzliche Zeilen (bisher "untere Tabelle")
-  const extraNames = ['Praktikant', 'Bullen Kate'];
-  // >>> NEU: alles zu einer Namensliste zusammenführen
-  const allNames = [...names, ...extraNames];
 
   const YEAR_START = CFG.YEAR_START || new Date().getFullYear();
   const YEAR_END   = CFG.YEAR_END || YEAR_START;
@@ -19,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const currentDate = new Date();
   currentDate.setFullYear(YEAR_START);
   currentDate.setMonth(0);
+
   // Aktuell ausgewählter Code (Legendenbutton)
   let selectedCode = null;
   // Flag zum Verfolgen des Mehrfachmalens per Maus
@@ -29,11 +25,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const holidayCache = {};
 
   // -------------------------------
-  // Ferien (Schulferien) Bayern
-  // Diese Liste ist eine grobe Annäherung der bayerischen Schulferien.
-  // Sie markiert zusammenhängende Ferientage, damit der Kopf grün wird.
+  // Ferien (Schulferien) Bayern (wie bisher)
   function isFerien(date) {
-    const y = date.getFullYear();
     const m = date.getMonth() + 1; // 1-based
     const d = date.getDate();
     // Weihnachtsferien: 1.–5. Januar
@@ -61,32 +54,199 @@ document.addEventListener('DOMContentLoaded', () => {
   const nextBtn      = document.getElementById('nextBtn');
   const legendTop    = document.getElementById('legendTop');
   const gridMain     = document.getElementById('gridMain');
-  const gridExtra    = document.getElementById('gridExtra'); // bleibt optional im HTML, wird aber nicht mehr genutzt
   const remarksTA    = document.getElementById('remarksTA');
   const saveRemarksBtn = document.getElementById('saveRemarksBtn');
   const toastEl      = document.getElementById('toast');
 
-  // Fülle Dropdown für Namen (alle Namen, damit auch Praktikant/Bullen Kate bearbeitbar sind)
-  allNames.forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    meSelect.appendChild(opt);
-  });
-  // Standardwert (falls vorhanden)
-  if (allNames.length > 0) meSelect.value = allNames[0];
+  // -------------------------------
+  // Supabase Zugriff (ohne Login)
+  function getSupabaseClient() {
+    // Je nach Setup heißt das Objekt anders:
+    // - window.supabase (typisch: createClient() wurde bereits aufgerufen)
+    // - window.supabaseClient (manche Setups)
+    return window.supabaseClient || window.supabase || null;
+  }
 
-  // Fülle Monatselect mit deutschen Monatsnamen
+  async function fetchActiveEmployees() {
+    const sb = getSupabaseClient();
+    if (!sb || !sb.from) return null;
+
+    const { data, error } = await sb
+      .from('mitarbeiter')
+      .select('name, aktiv')
+      .order('name', { ascending: true });
+
+    if (error) return null;
+
+    // Nur aktive Namen
+    return (data || [])
+      .filter(r => r && r.name && r.aktiv === true)
+      .map(r => r.name);
+  }
+
+  async function addEmployee(name) {
+    const sb = getSupabaseClient();
+    if (!sb || !sb.from) throw new Error('no-supabase');
+    const { error } = await sb.from('mitarbeiter').insert([{ name, aktiv: true }]);
+    if (error) throw error;
+  }
+
+  async function deactivateEmployeeByName(name) {
+    const sb = getSupabaseClient();
+    if (!sb || !sb.from) throw new Error('no-supabase');
+    const { error } = await sb.from('mitarbeiter').update({ aktiv: false }).eq('name', name);
+    if (error) throw error;
+  }
+
+  // -------------------------------
+  // Mitarbeiter-Liste (kommt bevorzugt aus Supabase, Fallback aus config.js)
+  let allNames = [];
+  let employeeLoaded = false;
+
+  async function ensureEmployeesLoaded() {
+    if (employeeLoaded) return;
+
+    // 1) Supabase (aktiv=true)
+    try {
+      const supaNames = await fetchActiveEmployees();
+      if (Array.isArray(supaNames) && supaNames.length > 0) {
+        allNames = supaNames;
+        employeeLoaded = true;
+        rebuildMeSelectOptions();
+        return;
+      }
+    } catch (_) {}
+
+    // 2) Fallback: config.js (alter Zustand)
+    const namesFromCfg = CFG.NAMES || [];
+    const extraNames = ['Praktikant', 'Bullen Kate']; // falls alte Instanzen noch darauf basieren
+    allNames = [...namesFromCfg, ...extraNames].filter(Boolean);
+    employeeLoaded = true;
+    rebuildMeSelectOptions();
+  }
+
+  function rebuildMeSelectOptions() {
+    if (!meSelect) return;
+    const previous = meSelect.value;
+
+    meSelect.innerHTML = '';
+    allNames.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      meSelect.appendChild(opt);
+    });
+
+    // Standardwert
+    if (previous && allNames.includes(previous)) meSelect.value = previous;
+    else if (allNames.length > 0) meSelect.value = allNames[0];
+  }
+
+  // -------------------------------
+  // UI: Buttons unten links (unterhalb des Bemerkungsbereichs)
+  function ensureEmployeeControls() {
+    if (document.getElementById('employeeControls')) return;
+
+    // Leichtes Highlight für ausgewählte Zeile (nur optisch, ansonsten Design unverändert)
+    const style = document.createElement('style');
+    style.textContent = `
+      tr.row-selected td.name {
+        outline: 2px solid rgba(0,0,0,0.25);
+        outline-offset: -2px;
+        font-weight: 700;
+      }
+      #employeeControls {
+        margin: 8px 0 0 0;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #employeeControls button {
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid rgba(0,0,0,0.25);
+        background: #fff;
+        cursor: pointer;
+      }
+      #employeeControls button:hover { filter: brightness(0.98); }
+    `;
+    document.head.appendChild(style);
+
+    const controls = document.createElement('div');
+    controls.id = 'employeeControls';
+
+    const btnAdd = document.createElement('button');
+    btnAdd.type = 'button';
+    btnAdd.textContent = 'Mitarbeiter hinzufügen';
+
+    const btnRemove = document.createElement('button');
+    btnRemove.type = 'button';
+    btnRemove.textContent = 'Mitarbeiter entfernen';
+
+    controls.appendChild(btnAdd);
+    controls.appendChild(btnRemove);
+
+    // Position: direkt unter dem "Bemerkungen speichern"-Button (unten links)
+    if (saveRemarksBtn && saveRemarksBtn.parentNode) {
+      saveRemarksBtn.parentNode.insertBefore(controls, saveRemarksBtn.nextSibling);
+    } else {
+      // Fallback: ans Ende
+      document.body.appendChild(controls);
+    }
+
+    btnAdd.addEventListener('click', async () => {
+      const raw = prompt('Name des neuen Mitarbeiters:');
+      if (!raw) return;
+      const name = raw.trim();
+      if (!name) return;
+
+      if (allNames.includes(name)) {
+        showToast('Name existiert bereits');
+        return;
+      }
+
+      try {
+        await addEmployee(name);
+        showToast('Mitarbeiter hinzugefügt');
+        employeeLoaded = false; // neu laden
+        await loadAndRender();
+      } catch (e) {
+        showToast('Fehler beim Hinzufügen');
+      }
+    });
+
+    btnRemove.addEventListener('click', async () => {
+      const name = meSelect?.value || '';
+      if (!name) {
+        showToast('Kein Mitarbeiter ausgewählt');
+        return;
+      }
+
+      const ok = confirm(`Soll "${name}" wirklich entfernt (deaktiviert) werden?`);
+      if (!ok) return;
+
+      try {
+        await deactivateEmployeeByName(name);
+        showToast('Mitarbeiter deaktiviert');
+        employeeLoaded = false; // neu laden
+        await loadAndRender();
+      } catch (e) {
+        showToast('Fehler beim Entfernen');
+      }
+    });
+  }
+
+  // -------------------------------
+  // Monate / Jahre
   for (let i = 0; i < 12; i++) {
     const dt = new Date(2023, i, 1);
     const opt = document.createElement('option');
     opt.value = i;
-    // localeString mit deutschem Monatsnamen
     opt.textContent = dt.toLocaleString('de', { month:'long' });
     monthSelect.appendChild(opt);
   }
 
-  // Fülle Jahrselect vom Startjahr bis max (2030)
   for (let y = YEAR_START; y <= YEAR_MAX; y++) {
     const opt = document.createElement('option');
     opt.value = y;
@@ -94,8 +254,8 @@ document.addEventListener('DOMContentLoaded', () => {
     yearSelect.appendChild(opt);
   }
 
-  // Definition der Legenden-Codes und Beschriftungen
-  // Legende mit allen Codes: Grundschichten, Umschalter, Emojis und Sondercodes
+  // -------------------------------
+  // Legende (wie bisher)
   const codes = [
     { code: 'N', label: 'N' },
     { code: 'F', label: 'F' },
@@ -117,7 +277,6 @@ document.addEventListener('DOMContentLoaded', () => {
     { code: 'X',    label: 'X' }
   ];
 
-  // Erstelle Legenden-Buttons in einem Container
   function buildLegend(container) {
     container.innerHTML = '';
     codes.forEach(({ code, label }) => {
@@ -133,11 +292,10 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(btn);
     });
   }
-
-  // Erzeuge Legende nur einmal (oben).
   buildLegend(legendTop);
 
-  // Hilfsfunktionen für gelbe Tage und Feiertage
+  // -------------------------------
+  // Hilfsfunktionen
   function daysBetween(date1, date2) {
     const time1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate());
     const time2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate());
@@ -149,6 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const mod = ((diff % 4) + 4) % 4;
     return mod === 0 || mod === 1;
   }
+
   // Osterberechnung (Gauss'sche Formel)
   function calcEaster(year) {
     const f = Math.floor;
@@ -162,74 +321,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const day = L + 28 - 31 * f(month / 4);
     return new Date(year, month - 1, day);
   }
+
   function getHolidays(year) {
-    // Gibt Liste von "YYYY-M-D"-Strings für bayerische Feiertage zurück
     const easter = calcEaster(year);
     const list = [];
     function toStr(d) { return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
     list.push(`${year}-1-1`);   // Neujahr
     list.push(`${year}-1-6`);   // Heilige Drei Könige
-    // Karfreitag (2 Tage vor Ostersonntag)
-    const gf = new Date(easter);
-    gf.setDate(easter.getDate() - 2);
-    list.push(toStr(gf));
-    // Ostermontag (1 Tag nach Ostersonntag)
-    const em = new Date(easter);
-    em.setDate(easter.getDate() + 1);
-    list.push(toStr(em));
-    // 1. Mai
-    list.push(`${year}-5-1`);
-    // Christi Himmelfahrt (39 Tage nach Ostersonntag)
-    const asc = new Date(easter);
-    asc.setDate(easter.getDate() + 39);
-    list.push(toStr(asc));
-    // Pfingstmontag (50 Tage nach Ostersonntag)
-    const pm = new Date(easter);
-    pm.setDate(easter.getDate() + 50);
-    list.push(toStr(pm));
-    // Fronleichnam (60 Tage nach Ostersonntag)
-    const cc = new Date(easter);
-    cc.setDate(easter.getDate() + 60);
-    list.push(toStr(cc));
-    // Mariä Himmelfahrt
-    list.push(`${year}-8-15`);
-    // Tag der Deutschen Einheit
-    list.push(`${year}-10-3`);
-    // Allerheiligen
-    list.push(`${year}-11-1`);
-    // 1. Weihnachtstag
-    list.push(`${year}-12-25`);
-    // 2. Weihnachtstag
-    list.push(`${year}-12-26`);
+
+    const gf = new Date(easter); gf.setDate(easter.getDate() - 2); list.push(toStr(gf)); // Karfreitag
+    const em = new Date(easter); em.setDate(easter.getDate() + 1); list.push(toStr(em)); // Ostermontag
+
+    list.push(`${year}-5-1`); // 1. Mai
+
+    const asc = new Date(easter); asc.setDate(easter.getDate() + 39); list.push(toStr(asc)); // Christi Himmelfahrt
+    const pm  = new Date(easter); pm.setDate(easter.getDate() + 50); list.push(toStr(pm));  // Pfingstmontag
+    const cc  = new Date(easter); cc.setDate(easter.getDate() + 60); list.push(toStr(cc));  // Fronleichnam
+
+    list.push(`${year}-8-15`); // Mariä Himmelfahrt
+    list.push(`${year}-10-3`); // Tag der Deutschen Einheit
+    list.push(`${year}-11-1`); // Allerheiligen
+    list.push(`${year}-12-25`); // 1. Weihnachtstag
+    list.push(`${year}-12-26`); // 2. Weihnachtstag
     return list;
   }
+
   function isHoliday(date) {
     const y = date.getFullYear();
-    if (!holidayCache[y]) {
-      const arr = getHolidays(y);
-      holidayCache[y] = new Set(arr);
-    }
+    if (!holidayCache[y]) holidayCache[y] = new Set(getHolidays(y));
     return holidayCache[y].has(`${y}-${date.getMonth()+1}-${date.getDate()}`);
   }
 
-  // Anzeige von Toast-Nachrichten
+  // Toast
   let toastTimeout = null;
   function showToast(msg) {
     toastEl.textContent = msg;
     toastEl.classList.add('show');
     clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => {
-      toastEl.classList.remove('show');
-    }, 2000);
+    toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2000);
   }
 
-  // Dropdown-Updates nach Datum ändern
   function refreshSelects() {
     monthSelect.value = currentDate.getMonth();
     yearSelect.value  = currentDate.getFullYear();
   }
 
-  // Event-Handler für Jahr/Monat Navigation
+  // Navigation
   monthSelect.addEventListener('change', () => {
     currentDate.setMonth(parseInt(monthSelect.value, 10));
     loadAndRender();
@@ -240,24 +377,22 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   prevBtn.addEventListener('click', () => {
     const m = currentDate.getMonth();
-    if (m === 0) {
-      currentDate.setFullYear(currentDate.getFullYear() - 1);
-      currentDate.setMonth(11);
-    } else {
-      currentDate.setMonth(m - 1);
-    }
+    if (m === 0) { currentDate.setFullYear(currentDate.getFullYear() - 1); currentDate.setMonth(11); }
+    else currentDate.setMonth(m - 1);
     loadAndRender();
   });
   nextBtn.addEventListener('click', () => {
     const m = currentDate.getMonth();
-    if (m === 11) {
-      currentDate.setFullYear(currentDate.getFullYear() + 1);
-      currentDate.setMonth(0);
-    } else {
-      currentDate.setMonth(m + 1);
-    }
+    if (m === 11) { currentDate.setFullYear(currentDate.getFullYear() + 1); currentDate.setMonth(0); }
+    else currentDate.setMonth(m + 1);
     loadAndRender();
   });
+
+  meSelect.addEventListener('change', () => {
+    // Nur Anzeige / Restriktion – am Layout ändert sich nichts
+    showToast(`Ausgewählt: ${meSelect.value}`);
+  });
+
   saveRemarksBtn.addEventListener('click', () => {
     const remarks = remarksTA.value || '';
     const y = currentDate.getFullYear();
@@ -267,91 +402,71 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(() => showToast('Fehler beim Speichern der Bemerkungen'));
   });
 
-  // Laden der Daten und Rendering der Tabellen
+  // -------------------------------
+  // Laden + Rendern
   async function loadAndRender() {
+    await ensureEmployeesLoaded();
+    ensureEmployeeControls();
+
     refreshSelects();
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth() + 1;
+
     // Lade Einträge für den Monat
     let entries = [];
-    try {
-      entries = await window.loadMonth({ year: y, month: m });
-    } catch (e) {
-      entries = [];
-    }
-    // Mappe Werte nach Name|Tag
+    try { entries = await window.loadMonth({ year: y, month: m }); } catch (_) { entries = []; }
+
     const valueMap = {};
     entries.forEach(rec => {
-      if (rec && rec.name && typeof rec.day !== 'undefined') {
-        valueMap[`${rec.name}|${rec.day}`] = rec.value;
-      }
+      if (rec && rec.name && typeof rec.day !== 'undefined') valueMap[`${rec.name}|${rec.day}`] = rec.value;
     });
+
     // Lade Overrides
     let overrides = [];
-    try {
-      overrides = await window.loadOverrides({ year: y, month: m });
-    } catch (e) {
-      overrides = [];
-    }
+    try { overrides = await window.loadOverrides({ year: y, month: m }); } catch (_) { overrides = []; }
     overrideMap = {};
-    overrides.forEach(r => {
-      overrideMap[`${r.name}|${r.day}`] = r.yellow_override;
-    });
+    overrides.forEach(r => { overrideMap[`${r.name}|${r.day}`] = r.yellow_override; });
+
     // Lade Bemerkungen
-    try {
-      const remarks = await window.loadRemarks({ year: y, month: m });
-      remarksTA.value = remarks || '';
-    } catch (e) {
-      remarksTA.value = '';
-    }
+    try { remarksTA.value = (await window.loadRemarks({ year: y, month: m })) || ''; }
+    catch (_) { remarksTA.value = ''; }
 
-    // >>> NEU: Rendering nur noch EINER Tabelle (alles zusammen)
+    // Rendering (nur 1 Tabelle, aber Optik/Logik bleibt)
     renderGrid(allNames, gridMain, valueMap);
-
-    // Optional: zweite Tabelle leeren, falls im HTML noch vorhanden
-    if (gridExtra) gridExtra.innerHTML = '';
   }
 
-  // Rendering einer Tabelle (Namen, Container, Wertzuordnung)
+  // -------------------------------
+  // Rendering (optisch identisch, nur eine Tabelle)
   function renderGrid(namesArr, container, valueMap) {
     const y = currentDate.getFullYear();
     const mIdx = currentDate.getMonth();
     const daysInMonth = new Date(y, mIdx + 1, 0).getDate();
-    // Kopfzeile
+
     let html = '<table><thead><tr><th class="name">Name</th>';
     for (let d = 1; d <= daysInMonth; d++) {
       const dt = new Date(y, mIdx, d);
       const wd = ['So','Mo','Di','Mi','Do','Fr','Sa'][dt.getDay()];
-      // Färbe den Kopf: Wochenende vor Ferien (BY) / Feiertag
       const hclasses = [];
       const dow = dt.getDay();
-      if (dow === 6) {
-        // Samstag
-        hclasses.push('sat');
-      } else if (dow === 0) {
-        // Sonntag
-        hclasses.push('sun');
-      } else {
-        // Ferien oder gesetzlicher Feiertag
-        if (isHoliday(dt) || isFerien(dt)) {
-          hclasses.push('ferienday');
-        }
-      }
+      if (dow === 6) hclasses.push('sat');
+      else if (dow === 0) hclasses.push('sun');
+      else if (isHoliday(dt) || isFerien(dt)) hclasses.push('ferienday');
       const clsStr = hclasses.length > 0 ? ` class="${hclasses.join(' ')}"` : '';
       html += `<th${clsStr}><span class="daynum">${d}</span><br/><span class="weekday">${wd}</span></th>`;
     }
     html += '</tr></thead><tbody>';
-    // Zeilen
+
     namesArr.forEach(name => {
-      html += '<tr>';
+      html += `<tr data-row-name="${name}">`;
       html += `<td class="name">${name}</td>`;
       for (let d = 1; d <= daysInMonth; d++) {
         const dt = new Date(y, mIdx, d);
         let classes = [];
-        // Grundfarbe Gelb (2‑Tage‑Rhythmus)
-        // Für die Zeile "Bullen Kate" keine Standard‑Gelbfärbung
+
+        // Grundfarbe Gelb (2‑Tage‑Rhythmus) – unverändert
         if (name !== 'Bullen Kate' && isYellowDay(dt)) classes.push('yellow');
-        // Overrides für Gelb/Weiß
+
+        // Overrides Gelb/Weiß
         const key = `${name}|${d}`;
         if (overrideMap[key] === 1) {
           if (!classes.includes('yellow')) classes.push('yellow');
@@ -360,6 +475,7 @@ document.addEventListener('DOMContentLoaded', () => {
           classes = classes.filter(c => c !== 'yellow');
           classes.push('no-yellow');
         }
+
         // Codes
         const val = valueMap[key] || '';
         let codeClass = '';
@@ -377,13 +493,30 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
         if (codeClass) classes.push(codeClass);
+
         const content = (val === '🍺' || val === '🎉') ? val : (val || '');
         html += `<td class="editable ${classes.join(' ')}" data-name="${name}" data-day="${d}">${content}</td>`;
       }
       html += '</tr>';
     });
+
     html += '</tbody></table>';
     container.innerHTML = html;
+
+    // Klick auf Name = Auswahl (nur Komfort, Design bleibt)
+    container.querySelectorAll('tr[data-row-name] td.name').forEach(td => {
+      td.addEventListener('click', () => {
+        const row = td.closest('tr');
+        const name = row?.dataset?.rowName || td.textContent.trim();
+        if (name && allNames.includes(name)) {
+          meSelect.value = name;
+          container.querySelectorAll('tr.row-selected').forEach(r => r.classList.remove('row-selected'));
+          row.classList.add('row-selected');
+          showToast(`Ausgewählt: ${name}`);
+        }
+      });
+    });
+
     // Eventhandler für Zellen
     container.querySelectorAll('td.editable').forEach(cell => {
       cell.addEventListener('mousedown', e => {
@@ -394,20 +527,18 @@ document.addEventListener('DOMContentLoaded', () => {
       cell.addEventListener('mouseenter', () => {
         if (isPainting) handleCell(cell);
       });
-      cell.addEventListener('mouseup', () => {
-        isPainting = false;
-      });
-      cell.addEventListener('click', () => {
-        handleCell(cell);
-      });
+      cell.addEventListener('mouseup', () => { isPainting = false; });
+      cell.addEventListener('click', () => { handleCell(cell); });
     });
   }
 
-  // Behandlung einer einzelnen Zelle beim Bemalen
+  // -------------------------------
+  // Zellen-Bemalung (wie bisher, Restriktion: nur ausgewählte Zeile)
   function handleCell(cell) {
     const name = cell.dataset.name;
     const day  = parseInt(cell.dataset.day, 10);
     const myName = meSelect.value;
+
     if (myName && myName !== name) {
       showToast('Nur in deiner Zeile eintragbar');
       return;
@@ -416,45 +547,39 @@ document.addEventListener('DOMContentLoaded', () => {
       showToast('Kein Code ausgewählt');
       return;
     }
-    // Overrides für Gelb/Weiß (schaltet eine Zelle dauerhaft auf Gelb oder Weiß)
+
+    // Overrides für Gelb/Weiß
     if (selectedCode === 'W2Y' || selectedCode === 'Y2W') {
       const ov = selectedCode === 'W2Y' ? 1 : -1;
       overrideMap[`${name}|${day}`] = ov;
+
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth() + 1;
-      window.saveOverride({ year: y, month: m, day, name, yellow_override: ov })
-        .catch(() => {});
-      // Zelle neu klassifizieren
+      window.saveOverride({ year: y, month: m, day, name, yellow_override: ov }).catch(() => {});
       updateOverrideClass(cell, ov);
       return;
     }
-    // Bestimme zu speichernden Wert
+
     let valueToSave;
-    if (selectedCode === 'X') {
-      valueToSave = '';
-    } else if (selectedCode === 'BEER') {
-      valueToSave = '🍺';
-    } else if (selectedCode === 'PARTY') {
-      valueToSave = '🎉';
-    } else if (selectedCode === 'STAR') {
-      // Speichere ein Stern-Symbol
-      valueToSave = '★';
-    } else {
-      valueToSave = selectedCode;
-    }
+    if (selectedCode === 'X') valueToSave = '';
+    else if (selectedCode === 'BEER') valueToSave = '🍺';
+    else if (selectedCode === 'PARTY') valueToSave = '🎉';
+    else if (selectedCode === 'STAR') valueToSave = '★';
+    else valueToSave = selectedCode;
+
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth() + 1;
-    window.saveCell({ year: y, month: m, day, name, value: valueToSave })
-      .catch(() => {});
+    window.saveCell({ year: y, month: m, day, name, value: valueToSave }).catch(() => {});
     updateCellValue(cell, valueToSave);
   }
 
-  // Aktualisiere Zellenwert und Code-Klasse
   function updateCellValue(cell, value) {
     cell.classList.remove(
       'code-U','code-AA','code-AZA','code-AZA6','code-AZA12',
-      'code-GV','code-LG','code-PE'
-    , 'code-u2','code-s','code-f','code-n');
+      'code-GV','code-LG','code-PE',
+      'code-u2','code-s','code-f','code-n'
+    );
+
     if (['U','S','F','N'].includes(value)) cell.classList.add('code-U');
     else if (value === 'AA') cell.classList.add('code-AA');
     else if (value === 'AZA') cell.classList.add('code-AZA');
@@ -469,22 +594,18 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (value === 'PE') cell.classList.add('code-PE');
     else if (value === '★') cell.classList.add('code-STAR');
 
-    if (value === '🍺' || value === '🎉' || value === '★') {
-      cell.textContent = value;
-    } else {
-      cell.textContent = value || '';
-    }
+    cell.textContent = (value === '🍺' || value === '🎉' || value === '★') ? value : (value || '');
   }
 
-  // Aktualisiere Klassen bei Override (Gelb/Weiß)
   function updateOverrideClass(cell, overrideVal) {
-    // Berechne Grundklassen
     const y = currentDate.getFullYear();
     const mIdx = currentDate.getMonth();
     const d  = parseInt(cell.dataset.day, 10);
     const dt = new Date(y, mIdx, d);
+
     let classes = [];
     if (isYellowDay(dt)) classes.push('yellow');
+
     if (overrideVal === 1) {
       if (!classes.includes('yellow')) classes.push('yellow');
       classes.push('force-yellow');
@@ -492,22 +613,14 @@ document.addEventListener('DOMContentLoaded', () => {
       classes = classes.filter(c => c !== 'yellow');
       classes.push('no-yellow');
     }
-    // Erhalte bestehende Code-Klassen
+
     const oldCode = Array.from(cell.classList).filter(c => c.startsWith('code-'));
     classes = classes.concat(oldCode);
     cell.className = `editable ${classes.join(' ')}`;
   }
 
-  // Verhindere, dass Rücktaste/Entfernen global verhindert wird, wenn im Textfeld
-  document.addEventListener('keydown', (e) => {
-    // Im Bemerkungsfeld nichts abfangen
-    if (document.activeElement === remarksTA) return;
-    // Für Undo/Redo könnte man hier reagieren, lassen wir jedoch offen
-  });
-
-  // Start: Auswahl initialisieren und rendern
+  // -------------------------------
+  // Start
   refreshSelects();
   loadAndRender();
 });
-
-// update trigger
