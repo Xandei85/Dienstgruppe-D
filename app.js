@@ -509,3 +509,5 @@ document.addEventListener('DOMContentLoaded', () => {
   refreshSelects();
   loadAndRender();
 });
+
+// update trigger
