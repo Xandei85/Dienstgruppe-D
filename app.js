@@ -3,8 +3,11 @@
 document.addEventListener('DOMContentLoaded', () => {
   const CFG = window.APP_CONFIG || {};
   const names = CFG.NAMES || [];
-  // Zusätzliche Zeilen in der unteren Tabelle
+  // Zusätzliche Zeilen (bisher "untere Tabelle")
   const extraNames = ['Praktikant', 'Bullen Kate'];
+  // >>> NEU: alles zu einer Namensliste zusammenführen
+  const allNames = [...names, ...extraNames];
+
   const YEAR_START = CFG.YEAR_START || new Date().getFullYear();
   const YEAR_END   = CFG.YEAR_END || YEAR_START;
   // Bis 2030 umschaltbar
@@ -58,20 +61,20 @@ document.addEventListener('DOMContentLoaded', () => {
   const nextBtn      = document.getElementById('nextBtn');
   const legendTop    = document.getElementById('legendTop');
   const gridMain     = document.getElementById('gridMain');
-  const gridExtra    = document.getElementById('gridExtra');
+  const gridExtra    = document.getElementById('gridExtra'); // bleibt optional im HTML, wird aber nicht mehr genutzt
   const remarksTA    = document.getElementById('remarksTA');
   const saveRemarksBtn = document.getElementById('saveRemarksBtn');
   const toastEl      = document.getElementById('toast');
 
-  // Fülle Dropdown für Namen (auch Zusatznamen, damit diese bearbeitbar sind)
-  [...names, ...extraNames].forEach(name => {
+  // Fülle Dropdown für Namen (alle Namen, damit auch Praktikant/Bullen Kate bearbeitbar sind)
+  allNames.forEach(name => {
     const opt = document.createElement('option');
     opt.value = name;
     opt.textContent = name;
     meSelect.appendChild(opt);
   });
   // Standardwert (falls vorhanden)
-  if (names.length > 0) meSelect.value = names[0];
+  if (allNames.length > 0) meSelect.value = allNames[0];
 
   // Fülle Monatselect mit deutschen Monatsnamen
   for (let i = 0; i < 12; i++) {
@@ -94,11 +97,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Definition der Legenden-Codes und Beschriftungen
   // Legende mit allen Codes: Grundschichten, Umschalter, Emojis und Sondercodes
   const codes = [
-            { code: 'N', label: 'N' },
-{ code: 'F', label: 'F' },
-{ code: 'S', label: 'S' },
-{ code: 'U2', label: 'U2' },
-{ code: 'U',    label: 'U' },
+    { code: 'N', label: 'N' },
+    { code: 'F', label: 'F' },
+    { code: 'S', label: 'S' },
+    { code: 'U2', label: 'U2' },
+    { code: 'U',    label: 'U' },
     { code: 'AA',   label: 'AA' },
     { code: 'AZA',  label: 'AZA' },
     { code: 'AZA6', label: 'AZA6' },
@@ -131,7 +134,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Erzeuge Legende nur einmal (oben). Die zweite Tabelle nutzt dieselben Buttons.
+  // Erzeuge Legende nur einmal (oben).
   buildLegend(legendTop);
 
   // Hilfsfunktionen für gelbe Tage und Feiertage
@@ -301,9 +304,12 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       remarksTA.value = '';
     }
-    // Rendering beider Tabellen
-    renderGrid(names, gridMain, valueMap);
-    renderGrid(extraNames, gridExtra, valueMap);
+
+    // >>> NEU: Rendering nur noch EINER Tabelle (alles zusammen)
+    renderGrid(allNames, gridMain, valueMap);
+
+    // Optional: zweite Tabelle leeren, falls im HTML noch vorhanden
+    if (gridExtra) gridExtra.innerHTML = '';
   }
 
   // Rendering einer Tabelle (Namen, Container, Wertzuordnung)
@@ -345,7 +351,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // Grundfarbe Gelb (2‑Tage‑Rhythmus)
         // Für die Zeile "Bullen Kate" keine Standard‑Gelbfärbung
         if (name !== 'Bullen Kate' && isYellowDay(dt)) classes.push('yellow');
-        // Keine Klassen für Wochenende/Ferien in den Zellen – diese werden nur im Kopf markiert
         // Overrides für Gelb/Weiß
         const key = `${name}|${d}`;
         if (overrideMap[key] === 1) {
@@ -455,16 +460,15 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (value === 'AZA') cell.classList.add('code-AZA');
     else if (value === 'AZA6') cell.classList.add('code-AZA6');
     else if (value === 'AZA12') cell.classList.add('code-AZA12');
-      else if (value === "U2") cell.classList.add('code-u2');
-else if (value === "S") cell.classList.add('code-s');
-else if (value === "F") cell.classList.add('code-f');
-else if (value === "N") cell.classList.add('code-n');
-
+    else if (value === "U2") cell.classList.add('code-u2');
+    else if (value === "S") cell.classList.add('code-s');
+    else if (value === "F") cell.classList.add('code-f');
+    else if (value === "N") cell.classList.add('code-n');
     else if (value === 'GV') cell.classList.add('code-GV');
     else if (value === 'LG') cell.classList.add('code-LG');
     else if (value === 'PE') cell.classList.add('code-PE');
     else if (value === '★') cell.classList.add('code-STAR');
-    // Für Sterne kein spezielles farbliches Klassenschema
+
     if (value === '🍺' || value === '🎉' || value === '★') {
       cell.textContent = value;
     } else {
@@ -481,7 +485,6 @@ else if (value === "N") cell.classList.add('code-n');
     const dt = new Date(y, mIdx, d);
     let classes = [];
     if (isYellowDay(dt)) classes.push('yellow');
-    // Wochenende-/Ferienfarben im Kopf, nicht in den Zellen
     if (overrideVal === 1) {
       if (!classes.includes('yellow')) classes.push('yellow');
       classes.push('force-yellow');
