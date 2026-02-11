@@ -225,41 +225,60 @@ document.addEventListener('DOMContentLoaded', () => {
   // -------------------------------
   // Mitarbeiter-Buttons automatisch unter die Bemerkungen setzen (unten links)
   function ensureEmployeeControls() {
-    if (!saveRemarksBtn) return;
-
-    // Falls schon vorhanden: nichts tun
-    if (document.getElementById('addEmployeeBtn')) return;
+    // Buttons unten links unter den Bemerkungen (ohne Design der Tabelle zu verändern)
+    if (document.getElementById('employeeControls')) return;
 
     const wrap = document.createElement('div');
-    wrap.id = 'mitarbeiterControls';
+    wrap.id = 'employeeControls';
     wrap.style.marginTop = '10px';
     wrap.style.display = 'flex';
     wrap.style.gap = '10px';
+    wrap.style.alignItems = 'center';
 
     const addBtn = document.createElement('button');
-    addBtn.id = 'addEmployeeBtn';
     addBtn.type = 'button';
+    addBtn.id = 'addEmployeeBtn';
     addBtn.textContent = 'Mitarbeiter hinzufügen';
-    // gleiche Optik wie Bemerkungen-Button: falls dort Klassen drin sind, übernehmen wir sie
-    addBtn.className = saveRemarksBtn.className || '';
+    // NICHT die legend-btn Klasse verwenden (die macht die Buttons klein)
+    addBtn.style.padding = '8px 12px';
+    addBtn.style.minWidth = '190px';
+    addBtn.style.fontSize = '14px';
+    addBtn.style.fontWeight = '600';
+    addBtn.style.borderRadius = '4px';
+    addBtn.style.border = '1px solid #2d6cdf';
+    addBtn.style.background = '#2d6cdf';
+    addBtn.style.color = '#fff';
+    addBtn.style.cursor = 'pointer';
+    addBtn.style.whiteSpace = 'nowrap';
 
-    const delBtn = document.createElement('button');
-    delBtn.id = 'removeEmployeeBtn';
-    delBtn.type = 'button';
-    delBtn.textContent = 'Mitarbeiter entfernen';
-    delBtn.className = saveRemarksBtn.className || '';
-    // optisch leicht absetzen, ohne CSS zu ändern
-    delBtn.style.borderColor = '#c0392b';
-    delBtn.style.color = '#c0392b';
-
-    wrap.appendChild(addBtn);
-    wrap.appendChild(delBtn);
-
-    // direkt nach dem "Bemerkungen speichern" Button einfügen
-    saveRemarksBtn.insertAdjacentElement('afterend', wrap);
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.id = 'removeEmployeeBtn';
+    removeBtn.textContent = 'Mitarbeiter entfernen';
+    removeBtn.style.padding = '8px 12px';
+    removeBtn.style.minWidth = '190px';
+    removeBtn.style.fontSize = '14px';
+    removeBtn.style.fontWeight = '600';
+    removeBtn.style.borderRadius = '4px';
+    removeBtn.style.border = '1px solid #c23b3b';
+    removeBtn.style.background = '#c23b3b';
+    removeBtn.style.color = '#fff';
+    removeBtn.style.cursor = 'pointer';
+    removeBtn.style.whiteSpace = 'nowrap';
 
     addBtn.addEventListener('click', onAddEmployee);
-    delBtn.addEventListener('click', onRemoveEmployee);
+    removeBtn.addEventListener('click', onRemoveEmployee);
+
+    wrap.appendChild(addBtn);
+    wrap.appendChild(removeBtn);
+
+    // Unter die Bemerkungen platzieren (direkt nach dem Speichern-Button)
+    const anchor = document.getElementById('saveRemarksBtn') || document.getElementById('remarksTA');
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
+    } else {
+      document.body.appendChild(wrap);
+    }
   }
 
   // -------------------------------
@@ -279,45 +298,56 @@ document.addEventListener('DOMContentLoaded', () => {
     return (data || []).map(r => (r?.name || '').trim()).filter(Boolean);
   }
 
-  async function addEmployeeByName(name) {
-    if (!hasSupabase()) throw new Error('Supabase not available');
-    const clean = (name || '').trim();
-    if (!clean) return;
+  async function addEmployeeByName(rawName) {
+    const name = String(rawName || '').trim();
+    if (!name) throw new Error('Kein Name angegeben');
 
-    // Ohne UNIQUE/Upsert: erst schauen, ob es den Namen schon gibt
-    const { data: existing, error: selErr } = await window.supabase
+    // Robust gegen Groß/Klein + Leerzeichen: wir holen alle Datensätze und vergleichen clientseitig
+    const { data: allRows, error: selErr } = await supabase
       .from('mitarbeiter')
-      .select('id, name')
-      .eq('name', clean)
-      .limit(1);
+      .select('id,name,aktiv');
 
     if (selErr) throw selErr;
 
-    if (existing && existing.length > 0) {
-      // existiert -> aktiv=true setzen
-      const { error: updErr } = await window.supabase
+    const norm = s => String(s || '').trim().toLowerCase();
+    const existing = (allRows || []).find(r => norm(r.name) === norm(name));
+
+    if (existing) {
+      // existiert schon -> (re)aktivieren + Name sauber speichern
+      const { error: updErr } = await supabase
         .from('mitarbeiter')
-        .update({ aktiv: true })
-        .eq('name', clean);
+        .update({ name: name, aktiv: true })
+        .eq('id', existing.id);
       if (updErr) throw updErr;
-    } else {
-      // neu -> einfügen
-      const { error: insErr } = await window.supabase
-        .from('mitarbeiter')
-        .insert({ name: clean, aktiv: true });
-      if (insErr) throw insErr;
+      return;
     }
+
+    const { error: insErr } = await supabase
+      .from('mitarbeiter')
+      .insert([{ name: name, aktiv: true }]);
+    if (insErr) throw insErr;
   }
 
-  async function deactivateEmployeeByName(name) {
-    if (!hasSupabase()) throw new Error('Supabase not available');
-    const clean = (name || '').trim();
-    if (!clean) return;
-    const { error } = await window.supabase
+  async function deactivateEmployeeByName(rawName) {
+    const name = String(rawName || '').trim();
+    if (!name) throw new Error('Kein Name angegeben');
+
+    const { data: allRows, error: selErr } = await supabase
+      .from('mitarbeiter')
+      .select('id,name,aktiv');
+
+    if (selErr) throw selErr;
+
+    const norm = s => String(s || '').trim().toLowerCase();
+    const row = (allRows || []).find(r => norm(r.name) === norm(name));
+    if (!row) throw new Error('Name nicht gefunden in Supabase');
+
+    const { error: updErr } = await supabase
       .from('mitarbeiter')
       .update({ aktiv: false })
-      .eq('name', clean);
-    if (error) throw error;
+      .eq('id', row.id);
+
+    if (updErr) throw updErr;
   }
 
   async function onAddEmployee() {
