@@ -4,14 +4,16 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Dienstgruppe D</title>
-  <link rel="stylesheet" href="style.css?v=U3">
+  <link rel="stylesheet" href="style.css?v=U6">
 </head>
 <body>
   <header>
     <h1>Dienstgruppe D</h1>
+
     <div class="controls">
       <label for="meSelect">Ich bin:</label>
       <select id="meSelect"></select>
+
       <button id="prevBtn" aria-label="Vormonat">◀</button>
       <select id="monthSelect"></select>
       <select id="yearSelect"></select>
@@ -36,26 +38,31 @@
 
   <main>
     <div class="grid" id="gridMain"></div>
+
     <div class="remarks">
       <label for="remarksTA">Bemerkungen (Monat):</label>
       <textarea id="remarksTA" rows="4" placeholder="Notizen..."></textarea>
       <button id="saveRemarksBtn">Bemerkungen speichern</button>
     </div>
+
     <!-- Zusätzliche Planung (kein eigener Button-Satz erforderlich) -->
     <div class="grid" id="gridExtra"></div>
+
+    <!-- Buttons für Mitarbeiterverwaltung (werden auch von app.js notfalls erzeugt) -->
+    <div style="margin-top:10px;">
+      <button id="addEmployeeBtn">Mitarbeiter hinzufügen</button>
+      <button id="removeEmployeeBtn">Mitarbeiter entfernen</button>
+    </div>
   </main>
 
-</footer>
+  <div class="toast" id="toast"></div>
 
-<div class="toast" id="toast"></div>
+  <!-- Supabase client library -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-<!-- Supabase client library for optional cloud storage -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-<!-- eigene Skripte -->
-<script src="config.js?v=U3"></script>
-<script src="supabaseClient.js?v=U3"></script>
-<script src="app.js?v=U4"></script>
-
+  <!-- eigene Skripte -->
+  <script src="config.js?v=U6"></script>
+  <script src="supabaseClient.js?v=U6"></script>
+  <script src="app.js?v=U6"></script>
 </body>
 </html>
