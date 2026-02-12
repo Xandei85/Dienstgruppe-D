@@ -529,29 +529,37 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     }
 
-    // Mitarbeiter Upsert (Insert/Update aktiv)
-    async function upsertEmployeeActive(name, aktiv) {
-      const client = getSupabaseClient();
-      if (!client || !client.from) throw new Error('Supabase-Client nicht verfügbar');
-      const { data: existing, error: selErr } = await client
-        .from('mitarbeiter')
-        .select('id, name')
-        .match({ name })
-        .limit(1);
-      if (selErr) throw selErr;
-      if (existing && existing.length) {
-        const { error: updErr } = await client
-          .from('mitarbeiter')
-          .update({ aktiv })
-          .match({ id: existing[0].id });
-        if (updErr) throw updErr;
-      } else {
-        const { error: insErr } = await client
-          .from('mitarbeiter')
-          .insert([{ name, aktiv }]);
-        if (insErr) throw insErr;
-      }
-    }
+    // Mitarbeiter upsert: aktiviert oder deaktiviert Mitarbeiter
+async function upsertEmployeeActive(name, aktiv) {
+  const client = getSupabaseClient();
+  if (!client || !client.from) throw new Error('Supabase-Client nicht verfügbar');
+  const cleanName = (name || '').trim();
+  if (!cleanName) return;
+
+  // Nach dem Namen filtern – .filter() funktioniert in allen Supabase-Versionen
+  const { data: existing, error: selErr } = await client
+    .from('mitarbeiter')
+    .select('id, name')
+    .filter('name', 'eq', cleanName);
+  if (selErr) throw selErr;
+
+  const row = Array.isArray(existing) && existing.length ? existing[0] : null;
+  if (row) {
+    // Datensatz aktualisieren
+    const { error: updErr } = await client
+      .from('mitarbeiter')
+      .update({ aktiv })
+      .filter('id', 'eq', row.id);
+    if (updErr) throw updErr;
+  } else {
+    // Datensatz neu anlegen
+    const { error: insErr } = await client
+      .from('mitarbeiter')
+      .insert([{ name: cleanName, aktiv }]);
+    if (insErr) throw insErr;
+  }
+}
+
 
     // Initialisierung
     refreshSelects();
