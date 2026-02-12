@@ -161,17 +161,86 @@ document.addEventListener("DOMContentLoaded", () => {
     return out;
   }
 
-  // -------- Supabase (ECHT) nur für Mitarbeiterverwaltung --------
-  let __realSb = null;
-  function getRealSupabaseClient() {
-    if (__realSb) return __realSb;
-    if (window.supabase && typeof window.supabase.createClient === "function") {
-      // SUPABASE_URL / SUPABASE_ANON_KEY kommen aus config.js
-      __realSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      return __realSb;
-    }
-    throw new Error("Supabase CDN Client nicht verfügbar");
+// ============================
+// Supabase REST (ohne supabase-js) – nur für Mitarbeiterverwaltung
+// ============================
+function sbRestUrl(path) {
+  return `${String(SUPABASE_URL).replace(/\/$/, "")}${path}`;
+}
+
+async function sbFetch(path, { method = "GET", body = null, headers = {} } = {}) {
+  const res = await fetch(sbRestUrl(path), {
+    method,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      "Content-Type": "application/json",
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : null,
+  });
+
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+
+  if (!res.ok) {
+    throw new Error(`Supabase REST Fehler ${res.status}: ${text}`);
   }
+  return data;
+}
+
+// Mitarbeiter aus DB (nur aktiv=true) laden
+async function loadActiveEmployees() {
+  try {
+    // /rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc
+    const rows = await sbFetch(
+      `/rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc`
+    );
+
+    const active = (rows || [])
+      .map(r => (r?.name || "").trim())
+      .filter(Boolean);
+
+    if (active.length) return uniq(active);
+    return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
+  } catch (e) {
+    console.error("[DG-D] loadActiveEmployees REST error:", e);
+    return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
+  }
+}
+
+// Mitarbeiter upsert (aktiv true/false)
+async function upsertEmployeeActive(name, aktiv) {
+  const cleanName = (name || "").trim();
+  if (!cleanName) return;
+
+  // 1) Existiert schon?
+  const qName = encodeURIComponent(cleanName);
+  const found = await sbFetch(
+    `/rest/v1/mitarbeiter?select=id,name&name=eq.${qName}&limit=1`
+  );
+
+  if (Array.isArray(found) && found.length) {
+    // 2) Update (PATCH)
+    const id = found[0].id;
+    const qId = encodeURIComponent(id);
+
+    await sbFetch(`/rest/v1/mitarbeiter?id=eq.${qId}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: { aktiv: !!aktiv },
+    });
+  } else {
+    // 3) Insert (POST)
+    await sbFetch(`/rest/v1/mitarbeiter`, {
+      method: "POST",
+      headers: { Prefer: "return=minimal" },
+      body: { name: cleanName, aktiv: !!aktiv },
+    });
+  }
+}
+
 
   // Mitarbeiter aus DB (aktiv=true) laden
   async function loadActiveEmployees() {
