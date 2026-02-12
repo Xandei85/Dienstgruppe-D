@@ -1,6 +1,6 @@
-// Dienstgruppe D – stabile app.js
-// Fokus: Dienstplan läuft wie gewohnt + Mitarbeiterverwaltung läuft zuverlässig
-// Mitarbeiterverwaltung nutzt IMMER echten Supabase v2 Client (CDN), nicht den Wrapper.
+// Dienstgruppe D – saubere finale Version der app.js
+// Diese Version nutzt für die Mitarbeiterverwaltung ausschließlich die REST-API von Supabase.
+// Sie enthält keine doppelten Funktionsdefinitionen und verzichtet auf den nicht vorhandenen Supabase-Client.
 
 document.addEventListener("DOMContentLoaded", () => {
   const CFG = window.APP_CONFIG || {};
@@ -49,7 +49,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   let toastTimeout = null;
   function showToast(msg) {
-    try { console.log("[DG-D]", msg); } catch {}
+    try {
+      console.log("[DG-D]", msg);
+    } catch {}
     toastEl.textContent = msg;
     toastEl.style.opacity = "1";
     clearTimeout(toastTimeout);
@@ -108,9 +110,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const G = year % 19;
     const C = f(year / 100);
     const H = (C - f(C / 4) - f((8 * C + 13) / 25) + 19 * G + 15) % 30;
-    const I =
-      H -
-      f(H / 28) * (1 - f(29 / (H + 1)) * f((21 - G) / 11));
+    const I = H - f(H / 28) * (1 - f(29 / (H + 1)) * f((21 - G) / 11));
     const J = (year + f(year / 4) + I + 2 - C + f(C / 4)) % 7;
     const L = I - J;
     const month = 3 + f((L + 40) / 44);
@@ -126,14 +126,24 @@ document.addEventListener("DOMContentLoaded", () => {
     list.push(`${year}-1-1`);
     list.push(`${year}-1-6`);
 
-    const gf = new Date(easter); gf.setDate(easter.getDate() - 2); list.push(toStr(gf));
-    const em = new Date(easter); em.setDate(easter.getDate() + 1); list.push(toStr(em));
+    const gf = new Date(easter);
+    gf.setDate(easter.getDate() - 2);
+    list.push(toStr(gf));
+    const em = new Date(easter);
+    em.setDate(easter.getDate() + 1);
+    list.push(toStr(em));
 
     list.push(`${year}-5-1`);
 
-    const asc = new Date(easter); asc.setDate(easter.getDate() + 39); list.push(toStr(asc));
-    const pm = new Date(easter); pm.setDate(easter.getDate() + 50); list.push(toStr(pm));
-    const cc = new Date(easter); cc.setDate(easter.getDate() + 60); list.push(toStr(cc));
+    const asc = new Date(easter);
+    asc.setDate(easter.getDate() + 39);
+    list.push(toStr(asc));
+    const pm = new Date(easter);
+    pm.setDate(easter.getDate() + 50);
+    list.push(toStr(pm));
+    const cc = new Date(easter);
+    cc.setDate(easter.getDate() + 60);
+    list.push(toStr(cc));
 
     list.push(`${year}-8-15`);
     list.push(`${year}-10-3`);
@@ -161,135 +171,82 @@ document.addEventListener("DOMContentLoaded", () => {
     return out;
   }
 
-// ============================
-// Supabase REST (ohne supabase-js) – nur für Mitarbeiterverwaltung
-// ============================
-function sbRestUrl(path) {
-  return `${String(SUPABASE_URL).replace(/\/$/, "")}${path}`;
-}
-
-async function sbFetch(path, { method = "GET", body = null, headers = {} } = {}) {
-  const res = await fetch(sbRestUrl(path), {
-    method,
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      "Content-Type": "application/json",
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : null,
-  });
-
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch { data = text; }
-
-  if (!res.ok) {
-    throw new Error(`Supabase REST Fehler ${res.status}: ${text}`);
+  // ============================
+  // Supabase REST (ohne supabase-js) – nur für Mitarbeiterverwaltung
+  // ============================
+  function sbRestUrl(path) {
+    return `${String(SUPABASE_URL).replace(/\/$/, "")}${path}`;
   }
-  return data;
-}
 
-// Mitarbeiter aus DB (nur aktiv=true) laden
-async function loadActiveEmployees() {
-  try {
-    // /rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc
-    const rows = await sbFetch(
-      `/rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc`
-    );
-
-    const active = (rows || [])
-      .map(r => (r?.name || "").trim())
-      .filter(Boolean);
-
-    if (active.length) return uniq(active);
-    return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
-  } catch (e) {
-    console.error("[DG-D] loadActiveEmployees REST error:", e);
-    return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
-  }
-}
-
-// Mitarbeiter upsert (aktiv true/false)
-async function upsertEmployeeActive(name, aktiv) {
-  const cleanName = (name || "").trim();
-  if (!cleanName) return;
-
-  // 1) Existiert schon?
-  const qName = encodeURIComponent(cleanName);
-  const found = await sbFetch(
-    `/rest/v1/mitarbeiter?select=id,name&name=eq.${qName}&limit=1`
-  );
-
-  if (Array.isArray(found) && found.length) {
-    // 2) Update (PATCH)
-    const id = found[0].id;
-    const qId = encodeURIComponent(id);
-
-    await sbFetch(`/rest/v1/mitarbeiter?id=eq.${qId}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: { aktiv: !!aktiv },
+  async function sbFetch(path, { method = "GET", body = null, headers = {} } = {}) {
+    const res = await fetch(sbRestUrl(path), {
+      method,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : null,
     });
-  } else {
-    // 3) Insert (POST)
-    await sbFetch(`/rest/v1/mitarbeiter`, {
-      method: "POST",
-      headers: { Prefer: "return=minimal" },
-      body: { name: cleanName, aktiv: !!aktiv },
-    });
+
+    const text = await res.text();
+    let data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch {
+      data = text;
+    }
+
+    if (!res.ok) {
+      throw new Error(`Supabase REST Fehler ${res.status}: ${text}`);
+    }
+    return data;
   }
-}
 
-
-  // Mitarbeiter aus DB (aktiv=true) laden
+  // Mitarbeiter aus DB (nur aktiv=true) laden
   async function loadActiveEmployees() {
     try {
-      const sb = getRealSupabaseClient();
-      const { data, error } = await sb
-        .from("mitarbeiter")
-        .select("name, aktiv")
-        .order("name", { ascending: true });
+      const rows = await sbFetch(
+        `/rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc`
+      );
 
-      if (error) throw error;
-
-      const active = (data || [])
-        .filter((r) => r && r.aktiv === true && r.name)
-        .map((r) => String(r.name).trim());
+      const active = (rows || [])
+        .map((r) => (r?.name || "").trim())
+        .filter(Boolean);
 
       if (active.length) return uniq(active);
       return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
     } catch (e) {
-      console.error("[DG-D] loadActiveEmployees error:", e);
+      console.error("[DG-D] loadActiveEmployees REST error:", e);
       return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
     }
   }
 
-  // Mitarbeiter upsert (insert/update aktiv)
+  // Mitarbeiter upsert (aktiv true/false)
   async function upsertEmployeeActive(name, aktiv) {
-    const sb = getRealSupabaseClient();
     const cleanName = (name || "").trim();
     if (!cleanName) return;
 
-    const { data: row, error: selErr } = await sb
-      .from("mitarbeiter")
-      .select("id")
-      .eq("name", cleanName)
-      .maybeSingle();
+    const qName = encodeURIComponent(cleanName);
+    const found = await sbFetch(
+      `/rest/v1/mitarbeiter?select=id,name&name=eq.${qName}&limit=1`
+    );
 
-    if (selErr) throw selErr;
-
-    if (row?.id) {
-      const { error: updErr } = await sb
-        .from("mitarbeiter")
-        .update({ aktiv: !!aktiv })
-        .eq("id", row.id);
-      if (updErr) throw updErr;
+    if (Array.isArray(found) && found.length) {
+      const id = found[0].id;
+      const qId = encodeURIComponent(id);
+      await sbFetch(`/rest/v1/mitarbeiter?id=eq.${qId}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: { aktiv: !!aktiv },
+      });
     } else {
-      const { error: insErr } = await sb
-        .from("mitarbeiter")
-        .insert([{ name: cleanName, aktiv: !!aktiv }]);
-      if (insErr) throw insErr;
+      await sbFetch(`/rest/v1/mitarbeiter`, {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: { name: cleanName, aktiv: !!aktiv },
+      });
     }
   }
 
@@ -393,7 +350,9 @@ async function upsertEmployeeActive(name, aktiv) {
         document.querySelectorAll(".legend-btn").forEach((b) => {
           b.classList.toggle("active", b === btn);
         });
-        showToast("Modus: " + label + (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : ""));
+        showToast(
+          "Modus: " + label + (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : "")
+        );
       });
       legendTop.appendChild(btn);
     });
@@ -546,7 +505,9 @@ async function upsertEmployeeActive(name, aktiv) {
     let entries = [];
     try {
       if (window.loadMonth) entries = await window.loadMonth({ year: y, month: m });
-    } catch (e) { entries = []; }
+    } catch (e) {
+      entries = [];
+    }
 
     const valueMap = {};
     (entries || []).forEach((rec) => {
@@ -559,7 +520,9 @@ async function upsertEmployeeActive(name, aktiv) {
     let overrides = [];
     try {
       if (window.loadOverrides) overrides = await window.loadOverrides({ year: y, month: m });
-    } catch (e) { overrides = []; }
+    } catch (e) {
+      overrides = [];
+    }
 
     overrideMap = {};
     (overrides || []).forEach((r) => {
