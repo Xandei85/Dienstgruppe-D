@@ -1,62 +1,54 @@
-// Hauptskript für den Schichtplan (v4.6.11)
-// - Eine einzige Tabelle (alle Namen zusammen)
-// - Mitarbeiterverwaltung per Supabase-Tabelle "mitarbeiter" (Spalten: id, created_at, name, aktiv)
-// - Buttons "Mitarbeiter hinzufügen" / "Mitarbeiter entfernen" werden unten links unter den Bemerkungen automatisch eingefügt
-// - Design/Logik (Gelb-Rhythmus, Ferien/Feiertage im Kopf, Codes, Overrides) bleibt unverändert
+/ Hauptskript für den Schichtplan (v4.6.11) – 1 Tabelle + Mitarbeiter aktiv/deaktiv (Supabase: table "mitarbeiter")
+/*
+  Ziele:
+  - Optik/Design NICHT ändern (Gelb-Muster, Kopf-Farben, etc. bleiben wie bisher)
+  - Nur 1 Tabelle (keine zweite "extra"-Tabelle mehr)
+  - Mitarbeiter-Liste kommt (wenn Supabase konfiguriert) aus Tabelle "mitarbeiter" (aktiv=true)
+  - Buttons:
+      "Mitarbeiter hinzufügen" -> per Prompt Name erfassen, in "mitarbeiter" aktiv setzen / anlegen
+      "Mitarbeiter entfernen"  -> ausgewählten Namen (Dropdown "Ich bin") in "mitarbeiter" aktiv=false setzen
+  - Bessere Fehlermeldungen + console.error, damit Konsole nicht leer bleibt
+*/
 
 document.addEventListener('DOMContentLoaded', () => {
   const CFG = window.APP_CONFIG || {};
-  const FALLBACK_NAMES = CFG.NAMES || [];
-  // Falls Supabase ausfällt, werden diese Zusatzzeilen dennoch angezeigt:
-  const FALLBACK_EXTRA_NAMES = ['Praktikant', 'Bullen Kate'];
-
   const YEAR_START = CFG.YEAR_START || new Date().getFullYear();
   const YEAR_END   = CFG.YEAR_END || YEAR_START;
   const YEAR_MAX   = Math.max(YEAR_END, 2030);
-
   const START_PATTERN_DATE = CFG.START_PATTERN_DATE ? new Date(CFG.START_PATTERN_DATE) : new Date();
   const PATTERN_SHIFT = CFG.PATTERN_SHIFT || 0;
 
-  // Aktuelles Datum (Monat/Jahr) im Zustand
+  // Zustand
   const currentDate = new Date();
   currentDate.setFullYear(YEAR_START);
   currentDate.setMonth(0);
 
-  // Aktuell ausgewählter Code (Legendenbutton)
   let selectedCode = null;
-  // Flag zum Verfolgen des Mehrfachmalens per Maus
   let isPainting = false;
-  // Überschreibungen für Gelb/Weiß (je Monat geladen)
   let overrideMap = {};
-  // Cache für Feiertage pro Jahr
   const holidayCache = {};
 
-  // Namen (werden dynamisch geladen)
-  let currentNames = [];
+  // Mitarbeiterliste (dynamisch, aus Supabase oder fallback aus CFG.NAMES)
+  let activeNames = Array.isArray(CFG.NAMES) ? [...CFG.NAMES] : [];
+  // optional: gespeicherte (alle) Namen, wenn Supabase aktiv ist
+  let allNamesCache = [];
 
   // -------------------------------
-  // Ferien (Schulferien) Bayern (wie bisher)
+  // Ferien (Schulferien) Bayern – grobe Annäherung (wie vorher)
   function isFerien(date) {
-    const m = date.getMonth() + 1; // 1-based
+    const m = date.getMonth() + 1;
     const d = date.getDate();
-    // Weihnachtsferien: 1.–5. Januar
-    if (m === 1 && d <= 5) return true;
-    // Frühjahrsferien (Winterferien): 16.–20. Februar
-    if (m === 2 && d >= 16 && d <= 20) return true;
-    // Osterferien: 30. März – 10. April
-    if ((m === 3 && d >= 30) || (m === 4 && d <= 10)) return true;
-    // Pfingstferien: 2.–5. Juni
-    if (m === 6 && d >= 2 && d <= 5) return true;
-    // Sommerferien: 3. August – 14. September
-    if ((m === 8 && d >= 3) || (m === 9 && d <= 14)) return true;
-    // Herbstferien: 2.–6. November
-    if (m === 11 && d >= 2 && d <= 6) return true;
-    // Weihnachtsferien (zweiter Block): 23.–31. Dezember
-    if (m === 12 && d >= 23) return true;
+    if (m === 1 && d <= 5) return true;                 // 1.–5. Jan
+    if (m === 2 && d >= 16 && d <= 20) return true;     // 16.–20. Feb
+    if ((m === 3 && d >= 30) || (m === 4 && d <= 10)) return true; // 30. März – 10. Apr
+    if (m === 6 && d >= 2 && d <= 5) return true;       // 2.–5. Jun
+    if ((m === 8 && d >= 3) || (m === 9 && d <= 14)) return true;  // 3. Aug – 14. Sep
+    if (m === 11 && d >= 2 && d <= 6) return true;      // 2.–6. Nov
+    if (m === 12 && d >= 23) return true;               // 23.–31. Dez
     return false;
   }
 
-  // DOM-Elemente
+  // DOM
   const meSelect       = document.getElementById('meSelect');
   const monthSelect    = document.getElementById('monthSelect');
   const yearSelect     = document.getElementById('yearSelect');
@@ -64,36 +56,167 @@ document.addEventListener('DOMContentLoaded', () => {
   const nextBtn        = document.getElementById('nextBtn');
   const legendTop      = document.getElementById('legendTop');
   const gridMain       = document.getElementById('gridMain');
-  const gridExtra      = document.getElementById('gridExtra'); // wird nicht mehr benutzt, bleibt aber kompatibel falls vorhanden
+  const gridExtra      = document.getElementById('gridExtra'); // bleibt ggf. im HTML, wird aber nicht mehr genutzt
   const remarksTA      = document.getElementById('remarksTA');
   const saveRemarksBtn = document.getElementById('saveRemarksBtn');
   const toastEl        = document.getElementById('toast');
 
-  // -------------------------------
-  // Legenden-Codes und Beschriftungen (wie bisher)
+  // "gridExtra" ausblenden, falls vorhanden (Design bleibt ansonsten unverändert)
+  try { if (gridExtra) gridExtra.style.display = 'none'; } catch(_) {}
+
+  // ------------------------------------------------------------
+  // Supabase REST Helper (ohne supabase-js Abhängigkeit)
+  const SB_URL = CFG.SUPABASE_URL || CFG.SUPABASE_URL?.trim?.();
+  const SB_KEY = CFG.SUPABASE_ANON_KEY || CFG.SUPABASE_ANON_KEY?.trim?.();
+  const hasSupabase = !!(SB_URL && SB_KEY);
+
+  function sbHeaders(preferReturn=true) {
+    const h = {
+      'apikey': SB_KEY,
+      'Authorization': 'Bearer ' + SB_KEY,
+      'Content-Type': 'application/json'
+    };
+    if (preferReturn) h['Prefer'] = 'return=representation';
+    return h;
+  }
+
+  async function sbGet(pathAndQuery) {
+    const url = SB_URL.replace(/\/$/, '') + '/rest/v1/' + pathAndQuery.replace(/^\//,'');
+    const res = await fetch(url, { method:'GET', headers: sbHeaders(false) });
+    const txt = await res.text();
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch(_) { data = txt; }
+    if (!res.ok) {
+      const err = new Error('Supabase GET fehlgeschlagen: ' + res.status);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  async function sbPatch(pathAndQuery, bodyObj) {
+    const url = SB_URL.replace(/\/$/, '') + '/rest/v1/' + pathAndQuery.replace(/^\//,'');
+    const res = await fetch(url, { method:'PATCH', headers: sbHeaders(true), body: JSON.stringify(bodyObj) });
+    const txt = await res.text();
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch(_) { data = txt; }
+    if (!res.ok) {
+      const err = new Error('Supabase PATCH fehlgeschlagen: ' + res.status);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  async function sbPost(pathAndQuery, bodyObj) {
+    const url = SB_URL.replace(/\/$/, '') + '/rest/v1/' + pathAndQuery.replace(/^\//,'');
+    const res = await fetch(url, { method:'POST', headers: sbHeaders(true), body: JSON.stringify(bodyObj) });
+    const txt = await res.text();
+    let data = null;
+    try { data = txt ? JSON.parse(txt) : null; } catch(_) { data = txt; }
+    if (!res.ok) {
+      const err = new Error('Supabase POST fehlgeschlagen: ' + res.status);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  }
+
+  async function loadEmployeesFromSupabase() {
+    // nur aktive Mitarbeiter
+    // order=created_at.asc sorgt für stabile Reihenfolge (wie eingetragen)
+    const rows = await sbGet('mitarbeiter?select=name,aktiv,created_at&aktiv=eq.true&order=created_at.asc');
+    activeNames = (rows || []).map(r => r.name).filter(Boolean);
+    allNamesCache = activeNames.slice();
+    // Fallback, falls (noch) leer
+    if (!activeNames.length && Array.isArray(CFG.NAMES) && CFG.NAMES.length) {
+      activeNames = [...CFG.NAMES];
+    }
+  }
+
+  async function setEmployeeActive(name, isActive) {
+    // PATCH existing rows by name
+    const safe = encodeURIComponent(name);
+    const data = await sbPatch(`mitarbeiter?name=eq.${safe}`, { aktiv: !!isActive });
+    return data;
+  }
+
+  async function ensureEmployeeActive(name) {
+    // 1) versuche: aktiv=true setzen (falls existiert)
+    try {
+      const updated = await setEmployeeActive(name, true);
+      // Wenn nichts zurück kam, heißt das oft: kein Match -> dann insert
+      if (Array.isArray(updated) && updated.length > 0) return;
+    } catch (e) {
+      // bei 404/409 etc. weiter probieren (insert)
+      console.error(e);
+    }
+    // 2) insert (neuer Mitarbeiter)
+    await sbPost('mitarbeiter', { name, aktiv: true });
+  }
+
+  // ------------------------------------------------------------
+  // UI: Dropdown füllen (immer nur aktive Namen, aber "Ich bin" ist auch Steuerung für Entfernen)
+  function rebuildMeSelect(preserveValue=true) {
+    const prev = meSelect.value;
+    meSelect.innerHTML = '';
+    (activeNames || []).forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      meSelect.appendChild(opt);
+    });
+    if (preserveValue && prev && activeNames.includes(prev)) {
+      meSelect.value = prev;
+    } else if (activeNames.length) {
+      meSelect.value = activeNames[0];
+    }
+  }
+
+  // Monatselect
+  for (let i = 0; i < 12; i++) {
+    const dt = new Date(2023, i, 1);
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = dt.toLocaleString('de', { month:'long' });
+    monthSelect.appendChild(opt);
+  }
+
+  // Jahrselect
+  for (let y = YEAR_START; y <= YEAR_MAX; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    yearSelect.appendChild(opt);
+  }
+
+  // ------------------------------------------------------------
+  // Legende
   const codes = [
     { code: 'N', label: 'N' },
     { code: 'F', label: 'F' },
     { code: 'S', label: 'S' },
     { code: 'U2', label: 'U2' },
-    { code: 'U',    label: 'U' },
-    { code: 'AA',   label: 'AA' },
-    { code: 'AZA',  label: 'AZA' },
+    { code: 'U', label: 'U' },
+    { code: 'AA', label: 'AA' },
+    { code: 'AZA', label: 'AZA' },
     { code: 'AZA6', label: 'AZA6' },
-    { code: 'AZA12',label: 'AZA12' },
-    { code: 'W2Y',  label: 'Weiß→Gelb' },
-    { code: 'Y2W',  label: 'Gelb→Weiß' },
+    { code: 'AZA12', label: 'AZA12' },
+    { code: 'W2Y', label: 'Weiß→Gelb' },
+    { code: 'Y2W', label: 'Gelb→Weiß' },
     { code: 'BEER', label: '🍺' },
-    { code: 'PARTY',label: '🎉' },
-    { code: 'GV',   label: 'GV' },
-    { code: 'LG',   label: 'LG' },
-    { code: 'PE',   label: 'PE' },
+    { code: 'PARTY', label: '🎉' },
+    { code: 'GV', label: 'GV' },
+    { code: 'LG', label: 'LG' },
+    { code: 'PE', label: 'PE' },
     { code: 'STAR', label: '★' },
-    { code: 'X',    label: 'X' }
+    { code: 'X', label: 'X' }
   ];
 
   function buildLegend(container) {
-    if (!container) return;
     container.innerHTML = '';
     codes.forEach(({ code, label }) => {
       const btn = document.createElement('button');
@@ -103,26 +226,15 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.addEventListener('click', () => {
         selectedCode = code;
         document.querySelectorAll('.legend-btn').forEach(b => b.classList.toggle('active', b === btn));
-        showToast('Modus: ' + label + (meSelect?.value ? ` (nur Zeile: ${meSelect.value})` : ''));
+        showToast('Modus: ' + label + (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : ''));
       });
       container.appendChild(btn);
     });
   }
   buildLegend(legendTop);
 
-  // -------------------------------
-  // Toast
-  let toastTimeout = null;
-  function showToast(msg) {
-    if (!toastEl) return;
-    toastEl.textContent = msg;
-    toastEl.classList.add('show');
-    clearTimeout(toastTimeout);
-    toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2000);
-  }
-
-  // -------------------------------
-  // Hilfsfunktionen für Gelb-Rhythmus / Feiertage (wie bisher)
+  // ------------------------------------------------------------
+  // Gelb/Feiertage – unverändert
   function daysBetween(date1, date2) {
     const time1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate());
     const time2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate());
@@ -150,19 +262,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const easter = calcEaster(year);
     const list = [];
     function toStr(d) { return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`; }
-    list.push(`${year}-1-1`);   // Neujahr
-    list.push(`${year}-1-6`);   // Heilige Drei Könige
-    const gf = new Date(easter); gf.setDate(easter.getDate() - 2); list.push(toStr(gf)); // Karfreitag
-    const em = new Date(easter); em.setDate(easter.getDate() + 1); list.push(toStr(em)); // Ostermontag
-    list.push(`${year}-5-1`);   // 1. Mai
-    const asc = new Date(easter); asc.setDate(easter.getDate() + 39); list.push(toStr(asc)); // Christi Himmelfahrt
-    const pm = new Date(easter); pm.setDate(easter.getDate() + 50); list.push(toStr(pm)); // Pfingstmontag
-    const cc = new Date(easter); cc.setDate(easter.getDate() + 60); list.push(toStr(cc)); // Fronleichnam
-    list.push(`${year}-8-15`);  // Mariä Himmelfahrt
-    list.push(`${year}-10-3`);  // Tag der Deutschen Einheit
-    list.push(`${year}-11-1`);  // Allerheiligen
-    list.push(`${year}-12-25`); // 1. Weihnachtstag
-    list.push(`${year}-12-26`); // 2. Weihnachtstag
+    list.push(`${year}-1-1`);
+    list.push(`${year}-1-6`);
+    const gf = new Date(easter); gf.setDate(easter.getDate() - 2); list.push(toStr(gf));
+    const em = new Date(easter); em.setDate(easter.getDate() + 1); list.push(toStr(em));
+    list.push(`${year}-5-1`);
+    const asc = new Date(easter); asc.setDate(easter.getDate() + 39); list.push(toStr(asc));
+    const pm = new Date(easter); pm.setDate(easter.getDate() + 50); list.push(toStr(pm));
+    const cc = new Date(easter); cc.setDate(easter.getDate() + 60); list.push(toStr(cc));
+    list.push(`${year}-8-15`);
+    list.push(`${year}-10-3`);
+    list.push(`${year}-11-1`);
+    list.push(`${year}-12-25`);
+    list.push(`${year}-12-26`);
     return list;
   }
   function isHoliday(date) {
@@ -171,20 +283,14 @@ document.addEventListener('DOMContentLoaded', () => {
     return holidayCache[y].has(`${y}-${date.getMonth()+1}-${date.getDate()}`);
   }
 
-  // -------------------------------
-  // Dropdown (Monat/Jahr)
-  for (let i = 0; i < 12; i++) {
-    const dt = new Date(2023, i, 1);
-    const opt = document.createElement('option');
-    opt.value = i;
-    opt.textContent = dt.toLocaleString('de', { month:'long' });
-    monthSelect.appendChild(opt);
-  }
-  for (let y = YEAR_START; y <= YEAR_MAX; y++) {
-    const opt = document.createElement('option');
-    opt.value = y;
-    opt.textContent = y;
-    yearSelect.appendChild(opt);
+  // ------------------------------------------------------------
+  // Toast
+  let toastTimeout = null;
+  function showToast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => toastEl.classList.remove('show'), 2500);
   }
 
   function refreshSelects() {
@@ -192,6 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
     yearSelect.value  = currentDate.getFullYear();
   }
 
+  // Navigation
   monthSelect.addEventListener('change', () => {
     currentDate.setMonth(parseInt(monthSelect.value, 10));
     loadAndRender();
@@ -219,228 +326,118 @@ document.addEventListener('DOMContentLoaded', () => {
     const m = currentDate.getMonth() + 1;
     window.saveRemarks({ year: y, month: m, remarks })
       .then(() => showToast('Bemerkungen gespeichert'))
-      .catch(() => showToast('Fehler beim Speichern der Bemerkungen'));
+      .catch((e) => { console.error(e); showToast('Fehler beim Speichern'); });
   });
 
-  // -------------------------------
-  // Mitarbeiter-Buttons automatisch unter die Bemerkungen setzen (unten links)
-  function ensureEmployeeControls() {
-    // Buttons unten links unter den Bemerkungen (ohne Design der Tabelle zu verändern)
-    if (document.getElementById('employeeControls')) return;
+  // ------------------------------------------------------------
+  // Mitarbeiter Buttons (unten links neben "Bemerkungen speichern")
+  function ensureEmployeeButtons() {
+    // Wenn schon vorhanden: nichts tun
+    if (document.getElementById('addEmpBtn') || document.getElementById('removeEmpBtn')) return;
 
     const wrap = document.createElement('div');
-    wrap.id = 'employeeControls';
-    wrap.style.marginTop = '10px';
+    wrap.style.marginTop = '8px';
     wrap.style.display = 'flex';
     wrap.style.gap = '10px';
-    wrap.style.alignItems = 'center';
+    wrap.style.flexWrap = 'wrap';
 
     const addBtn = document.createElement('button');
+    addBtn.id = 'addEmpBtn';
     addBtn.type = 'button';
-    addBtn.id = 'addEmployeeBtn';
     addBtn.textContent = 'Mitarbeiter hinzufügen';
-    // NICHT die legend-btn Klasse verwenden (die macht die Buttons klein)
-    addBtn.style.padding = '8px 12px';
-    addBtn.style.minWidth = '190px';
-    addBtn.style.fontSize = '14px';
-    addBtn.style.fontWeight = '600';
-    addBtn.style.borderRadius = '4px';
-    addBtn.style.border = '1px solid #2d6cdf';
-    addBtn.style.background = '#2d6cdf';
-    addBtn.style.color = '#fff';
-    addBtn.style.cursor = 'pointer';
-    addBtn.style.whiteSpace = 'nowrap';
+    addBtn.className = 'btn'; // falls CSS existiert; sonst egal
 
     const removeBtn = document.createElement('button');
+    removeBtn.id = 'removeEmpBtn';
     removeBtn.type = 'button';
-    removeBtn.id = 'removeEmployeeBtn';
     removeBtn.textContent = 'Mitarbeiter entfernen';
-    removeBtn.style.padding = '8px 12px';
-    removeBtn.style.minWidth = '190px';
-    removeBtn.style.fontSize = '14px';
-    removeBtn.style.fontWeight = '600';
-    removeBtn.style.borderRadius = '4px';
-    removeBtn.style.border = '1px solid #c23b3b';
-    removeBtn.style.background = '#c23b3b';
-    removeBtn.style.color = '#fff';
-    removeBtn.style.cursor = 'pointer';
-    removeBtn.style.whiteSpace = 'nowrap';
+    removeBtn.className = 'btn';
 
-    addBtn.addEventListener('click', onAddEmployee);
-    removeBtn.addEventListener('click', onRemoveEmployee);
+    addBtn.addEventListener('click', async () => {
+      const name = (prompt('Neuen Mitarbeiter eingeben (Name):') || '').trim();
+      if (!name) return;
+      try {
+        if (!hasSupabase) {
+          // fallback ohne DB
+          if (!activeNames.includes(name)) activeNames.push(name);
+          rebuildMeSelect(false);
+          loadAndRender();
+          showToast('Hinzugefügt (lokal)');
+          return;
+        }
+        await ensureEmployeeActive(name);
+        await loadEmployeesFromSupabase();
+        rebuildMeSelect(true);
+        await loadAndRender();
+        showToast('Mitarbeiter hinzugefügt');
+      } catch (e) {
+        console.error('Add Mitarbeiter Fehler:', e);
+        const msg = e?.data?.message || e?.data?.hint || e?.message || 'Fehler';
+        showToast('Fehler beim Hinzufügen: ' + msg);
+      }
+    });
+
+    removeBtn.addEventListener('click', async () => {
+      const target = (meSelect.value || '').trim();
+      if (!target) return;
+      if (!confirm(`Mitarbeiter wirklich entfernen (deaktivieren)?\n\n${target}\n\nHinweis: Daten bleiben erhalten.`)) return;
+
+      try {
+        if (!hasSupabase) {
+          activeNames = activeNames.filter(n => n !== target);
+          rebuildMeSelect(false);
+          loadAndRender();
+          showToast('Entfernt (lokal)');
+          return;
+        }
+        await setEmployeeActive(target, false);
+        await loadEmployeesFromSupabase();
+        rebuildMeSelect(false);
+        await loadAndRender();
+        showToast('Mitarbeiter entfernt');
+      } catch (e) {
+        console.error('Remove Mitarbeiter Fehler:', e);
+        const msg = e?.data?.message || e?.data?.hint || e?.message || 'Fehler';
+        showToast('Fehler beim Entfernen: ' + msg);
+      }
+    });
 
     wrap.appendChild(addBtn);
     wrap.appendChild(removeBtn);
 
-    // Unter die Bemerkungen platzieren (direkt nach dem Speichern-Button)
-    const anchor = document.getElementById('saveRemarksBtn') || document.getElementById('remarksTA');
-    if (anchor && anchor.parentNode) {
-      anchor.parentNode.insertBefore(wrap, anchor.nextSibling);
-    } else {
-      document.body.appendChild(wrap);
-    }
+    // Buttons direkt unter "Bemerkungen speichern" platzieren
+    const parent = saveRemarksBtn?.parentElement || saveRemarksBtn;
+    if (parent && parent.appendChild) parent.appendChild(wrap);
   }
 
-  // -------------------------------
-  // Supabase: Mitarbeiter laden / hinzufügen / deaktivieren
-  function hasSupabase() {
-    return !!(window.supabase && typeof window.supabase.from === 'function');
-  }
-
-  async function loadEmployees() {
-    if (!hasSupabase()) throw new Error('Supabase not available');
-    const { data, error } = await window.supabase
-      .from('mitarbeiter')
-      .select('name, aktiv')
-      .eq('aktiv', true)
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    return (data || []).map(r => (r?.name || '').trim()).filter(Boolean);
-  }
-
-  async function addEmployeeByName(rawName) {
-    const name = String(rawName || '').trim();
-    if (!name) throw new Error('Kein Name angegeben');
-
-    // Robust gegen Groß/Klein + Leerzeichen: wir holen alle Datensätze und vergleichen clientseitig
-    const { data: allRows, error: selErr } = await window.supabase
-      .from('mitarbeiter')
-      .select('id,name,aktiv');
-
-    if (selErr) throw selErr;
-
-    const norm = s => String(s || '').trim().toLowerCase();
-    const existing = (allRows || []).find(r => norm(r.name) === norm(name));
-
-    if (existing) {
-      // existiert schon -> (re)aktivieren + Name sauber speichern
-      const { error: updErr } = await window.supabase
-        .from('mitarbeiter')
-        .update({ name: name, aktiv: true })
-        .eq('id', existing.id);
-      if (updErr) throw updErr;
-      return;
-    }
-
-    const { error: insErr } = await window.supabase
-      .from('mitarbeiter')
-      .insert([{ name: name, aktiv: true }]);
-    if (insErr) throw insErr;
-  }
-
-  async function deactivateEmployeeByName(rawName) {
-    const name = String(rawName || '').trim();
-    if (!name) throw new Error('Kein Name angegeben');
-
-    const { data: allRows, error: selErr } = await window.supabase
-      .from('mitarbeiter')
-      .select('id,name,aktiv');
-
-    if (selErr) throw selErr;
-
-    const norm = s => String(s || '').trim().toLowerCase();
-    const row = (allRows || []).find(r => norm(r.name) === norm(name));
-    if (!row) throw new Error('Name nicht gefunden in Supabase');
-
-    const { error: updErr } = await window.supabase
-      .from('mitarbeiter')
-      .update({ aktiv: false })
-      .eq('id', row.id);
-
-    if (updErr) throw updErr;
-  }
-
-  async function onAddEmployee() {
-    const name = prompt('Neuen Mitarbeiter eingeben:');
-    if (!name) return;
-    try {
-      await addEmployeeByName(name);
-      await reloadNamesAndRender();
-      showToast('Mitarbeiter hinzugefügt');
-    } catch (e) {
-      console.error('Add employee failed:', e);
-      showToast('Fehler beim Hinzufügen');
-    }
-  }
-
-  async function onRemoveEmployee() {
-    const name = meSelect?.value;
-    if (!name) return;
-
-    const ok = confirm(`Mitarbeiter wirklich entfernen (deaktivieren)?\n\n${name}\n\nHinweis: Daten bleiben erhalten.`);
-    if (!ok) return;
-
-    try {
-      await deactivateEmployeeByName(name);
-      await reloadNamesAndRender();
-
-      // falls der gerade ausgewählte Name deaktiviert wurde, Dropdown neu setzen
-      if (meSelect.options.length > 0) meSelect.value = meSelect.options[0].value;
-
-      showToast('Mitarbeiter entfernt (deaktiviert)');
-    } catch (e) {
-      console.error('Remove employee failed:', e);
-      showToast('Fehler beim Entfernen');
-    }
-  }
-
-  // -------------------------------
-  // Dropdown "Ich bin" neu füllen (wird nach Namen-Load aufgerufen)
-  function fillMeSelect(namesArr) {
-    if (!meSelect) return;
-    const prev = meSelect.value;
-
-    meSelect.innerHTML = '';
-    namesArr.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      meSelect.appendChild(opt);
-    });
-
-    // versuche alte Auswahl zu behalten
-    const stillExists = namesArr.includes(prev);
-    if (stillExists) meSelect.value = prev;
-    else if (namesArr.length > 0) meSelect.value = namesArr[0];
-  }
-
-  // -------------------------------
-  // Daten laden und rendern
-  async function reloadNamesAndRender() {
-    // Namen laden (Supabase -> sonst Fallback)
-    try {
-      const fromDb = await loadEmployees();
-      // Wenn DB leer ist, trotzdem fallback-extra anzeigen (damit Plan nicht "leer" wirkt)
-      currentNames = (fromDb && fromDb.length > 0) ? fromDb : [...FALLBACK_NAMES, ...FALLBACK_EXTRA_NAMES];
-    } catch (e) {
-      currentNames = [...FALLBACK_NAMES, ...FALLBACK_EXTRA_NAMES];
-    }
-
-    // Duplikate entfernen, Reihenfolge behalten
-    const seen = new Set();
-    currentNames = currentNames.filter(n => {
-      const k = (n || '').trim();
-      if (!k) return false;
-      if (seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    });
-
-    fillMeSelect(currentNames);
-    await loadAndRender();
-  }
-
+  // ------------------------------------------------------------
+  // Laden + Rendern
   async function loadAndRender() {
     refreshSelects();
+
+    // Mitarbeiter aus DB laden (damit Tabelle wirklich "eine" ist)
+    try {
+      if (hasSupabase) {
+        await loadEmployeesFromSupabase();
+      }
+    } catch (e) {
+      console.error('Load Mitarbeiter Fehler:', e);
+      // fallback zu config
+      activeNames = Array.isArray(CFG.NAMES) ? [...CFG.NAMES] : activeNames;
+    }
+
+    // Dropdown neu (wichtig auch nach Entfernen/Hinzufügen)
+    rebuildMeSelect(true);
 
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth() + 1;
 
-    // Monatseinträge laden
+    // Zellen laden
     let entries = [];
     try {
       entries = await window.loadMonth({ year: y, month: m });
     } catch (e) {
+      console.error('loadMonth Fehler:', e);
       entries = [];
     }
 
@@ -456,9 +453,9 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       overrides = await window.loadOverrides({ year: y, month: m });
     } catch (e) {
+      console.error('loadOverrides Fehler:', e);
       overrides = [];
     }
-
     overrideMap = {};
     overrides.forEach(r => {
       overrideMap[`${r.name}|${r.day}`] = r.yellow_override;
@@ -469,21 +466,20 @@ document.addEventListener('DOMContentLoaded', () => {
       const remarks = await window.loadRemarks({ year: y, month: m });
       remarksTA.value = remarks || '';
     } catch (e) {
+      console.error('loadRemarks Fehler:', e);
       remarksTA.value = '';
     }
 
-    // Rendering: NUR eine Tabelle
-    renderGrid(currentNames, gridMain, valueMap);
+    // Rendering (1 Tabelle)
+    renderGrid(activeNames, gridMain, valueMap);
 
-    // alte zweite Tabelle ausblenden, falls im HTML vorhanden
-    if (gridExtra) gridExtra.innerHTML = '';
+    // Buttons sicherstellen
+    ensureEmployeeButtons();
   }
 
-  // -------------------------------
-  // Rendering einer Tabelle
+  // ------------------------------------------------------------
+  // Tabelle rendern (Design bleibt)
   function renderGrid(namesArr, container, valueMap) {
-    if (!container) return;
-
     const y = currentDate.getFullYear();
     const mIdx = currentDate.getMonth();
     const daysInMonth = new Date(y, mIdx + 1, 0).getDate();
@@ -492,29 +488,27 @@ document.addEventListener('DOMContentLoaded', () => {
     for (let d = 1; d <= daysInMonth; d++) {
       const dt = new Date(y, mIdx, d);
       const wd = ['So','Mo','Di','Mi','Do','Fr','Sa'][dt.getDay()];
-
       const hclasses = [];
       const dow = dt.getDay();
       if (dow === 6) hclasses.push('sat');
       else if (dow === 0) hclasses.push('sun');
       else if (isHoliday(dt) || isFerien(dt)) hclasses.push('ferienday');
 
-      const clsStr = hclasses.length > 0 ? ` class="${hclasses.join(' ')}"` : '';
+      const clsStr = hclasses.length ? ` class="${hclasses.join(' ')}"` : '';
       html += `<th${clsStr}><span class="daynum">${d}</span><br/><span class="weekday">${wd}</span></th>`;
     }
     html += '</tr></thead><tbody>';
 
-    namesArr.forEach(name => {
+    (namesArr || []).forEach(name => {
       html += '<tr>';
-      html += `<td class="name">${name}</td>`;
+      html += `<td class="name" data-namecell="${name}">${name}</td>`;
       for (let d = 1; d <= daysInMonth; d++) {
         const dt = new Date(y, mIdx, d);
         let classes = [];
 
-        // Grundfarbe Gelb (2‑Tage‑Rhythmus) – wie bisher: Bullen Kate ohne Standard-Gelb
+        // Grundfarbe Gelb (2 Tage Rhythmus) – wie vorher, EXCEPT: "Bullen Kate" bleibt ohne Standard-Gelb
         if (name !== 'Bullen Kate' && isYellowDay(dt)) classes.push('yellow');
 
-        // Overrides Gelb/Weiß
         const key = `${name}|${d}`;
         if (overrideMap[key] === 1) {
           if (!classes.includes('yellow')) classes.push('yellow');
@@ -524,7 +518,6 @@ document.addEventListener('DOMContentLoaded', () => {
           classes.push('no-yellow');
         }
 
-        // Codes (farbliche Klassen wie bisher)
         const val = valueMap[key] || '';
         let codeClass = '';
         if (val) {
@@ -551,7 +544,20 @@ document.addEventListener('DOMContentLoaded', () => {
     html += '</tbody></table>';
     container.innerHTML = html;
 
-    // Eventhandler für Zellen
+    // Name-Zelle klickbar: setzt "Ich bin" auf diese Zeile (damit Entfernen/Eintragen eindeutig ist)
+    container.querySelectorAll('td.name[data-namecell]').forEach(td => {
+      td.style.cursor = 'pointer';
+      td.title = 'Zeile auswählen';
+      td.addEventListener('click', () => {
+        const n = td.getAttribute('data-namecell');
+        if (n && activeNames.includes(n)) {
+          meSelect.value = n;
+          showToast('Ausgewählt: ' + n);
+        }
+      });
+    });
+
+    // Eventhandler Zellen
     container.querySelectorAll('td.editable').forEach(cell => {
       cell.addEventListener('mousedown', e => {
         if (e.button !== 0) return;
@@ -561,37 +567,17 @@ document.addEventListener('DOMContentLoaded', () => {
       cell.addEventListener('mouseenter', () => {
         if (isPainting) handleCell(cell);
       });
-      cell.addEventListener('mouseup', () => {
-        isPainting = false;
-      });
-      cell.addEventListener('click', () => {
-        handleCell(cell);
-      });
+      cell.addEventListener('mouseup', () => { isPainting = false; });
+      cell.addEventListener('click', () => { handleCell(cell); });
     });
   }
 
-  // global: wenn Maus irgendwo losgelassen wird -> nicht weiter malen
-  document.addEventListener('mouseup', () => { isPainting = false; });
-
-  // -------------------------------
-  
-
-    // Klick auf Namen: setzt "Ich bin" auf diese Zeile (nur Auswahl, kein Design-Eingriff)
-    container.querySelectorAll('tbody td.name').forEach(td => {
-      td.addEventListener('click', () => {
-        const n = (td.textContent || '').trim();
-        const exists = Array.from(meSelect.options).some(o => o.value === n);
-        if (exists) {
-          meSelect.value = n;
-          showToast('Ausgewählt: ' + n);
-        }
-      });
-    });
-// Behandlung einer einzelnen Zelle beim Bemalen
+  // ------------------------------------------------------------
+  // Zelle bearbeiten
   function handleCell(cell) {
     const name = cell.dataset.name;
     const day  = parseInt(cell.dataset.day, 10);
-    const myName = meSelect?.value;
+    const myName = meSelect.value;
 
     if (myName && myName !== name) {
       showToast('Nur in deiner Zeile eintragbar');
@@ -602,18 +588,20 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Overrides für Gelb/Weiß
+    // Override Gelb/Weiß
     if (selectedCode === 'W2Y' || selectedCode === 'Y2W') {
       const ov = selectedCode === 'W2Y' ? 1 : -1;
       overrideMap[`${name}|${day}`] = ov;
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth() + 1;
-      window.saveOverride({ year: y, month: m, day, name, yellow_override: ov }).catch(() => {});
+
+      window.saveOverride({ year: y, month: m, day, name, yellow_override: ov })
+        .catch((e) => console.error('saveOverride Fehler:', e));
+
       updateOverrideClass(cell, ov);
       return;
     }
 
-    // Bestimme zu speichernden Wert
     let valueToSave;
     if (selectedCode === 'X') valueToSave = '';
     else if (selectedCode === 'BEER') valueToSave = '🍺';
@@ -623,16 +611,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const y = currentDate.getFullYear();
     const m = currentDate.getMonth() + 1;
-    window.saveCell({ year: y, month: m, day, name, value: valueToSave }).catch(() => {});
+
+    window.saveCell({ year: y, month: m, day, name, value: valueToSave })
+      .catch((e) => console.error('saveCell Fehler:', e));
+
     updateCellValue(cell, valueToSave);
   }
 
-  // Aktualisiere Zellenwert und Code-Klasse
   function updateCellValue(cell, value) {
     cell.classList.remove(
       'code-U','code-AA','code-AZA','code-AZA6','code-AZA12',
-      'code-GV','code-LG','code-PE',
-      'code-u2','code-s','code-f','code-n'
+      'code-GV','code-LG','code-PE','code-u2','code-s','code-f','code-n'
     );
 
     if (['U','S','F','N'].includes(value)) cell.classList.add('code-U');
@@ -647,23 +636,17 @@ document.addEventListener('DOMContentLoaded', () => {
     else if (value === 'GV') cell.classList.add('code-GV');
     else if (value === 'LG') cell.classList.add('code-LG');
     else if (value === 'PE') cell.classList.add('code-PE');
-    else if (value === '★') cell.classList.add('code-STAR');
 
-    if (value === '🍺' || value === '🎉' || value === '★') cell.textContent = value;
-    else cell.textContent = value || '';
+    cell.textContent = (value === '🍺' || value === '🎉' || value === '★') ? value : (value || '');
   }
 
-  // Aktualisiere Klassen bei Override (Gelb/Weiß)
   function updateOverrideClass(cell, overrideVal) {
     const y = currentDate.getFullYear();
     const mIdx = currentDate.getMonth();
     const d  = parseInt(cell.dataset.day, 10);
     const dt = new Date(y, mIdx, d);
-
     let classes = [];
-    // Grund-Gelb: nur wenn nicht Bullen Kate
-    if (cell.dataset.name !== 'Bullen Kate' && isYellowDay(dt)) classes.push('yellow');
-
+    if (isYellowDay(dt)) classes.push('yellow');
     if (overrideVal === 1) {
       if (!classes.includes('yellow')) classes.push('yellow');
       classes.push('force-yellow');
@@ -671,22 +654,26 @@ document.addEventListener('DOMContentLoaded', () => {
       classes = classes.filter(c => c !== 'yellow');
       classes.push('no-yellow');
     }
-
-    // Erhalte bestehende Code-Klassen
     const oldCode = Array.from(cell.classList).filter(c => c.startsWith('code-'));
     classes = classes.concat(oldCode);
-
     cell.className = `editable ${classes.join(' ')}`;
   }
 
-  // Im Bemerkungsfeld nichts abfangen
   document.addEventListener('keydown', (e) => {
     if (document.activeElement === remarksTA) return;
   });
 
-  // -------------------------------
   // Start
   refreshSelects();
-  ensureEmployeeControls();
-  reloadNamesAndRender();
+  // dropdown erst nach Mitarbeiter load
+  (async () => {
+    try {
+      if (hasSupabase) await loadEmployeesFromSupabase();
+    } catch(e) {
+      console.error('Init Mitarbeiter Fehler:', e);
+    }
+    rebuildMeSelect(false);
+    loadAndRender();
+  })();
 });
+
