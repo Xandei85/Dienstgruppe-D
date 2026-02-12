@@ -13,3 +13,7 @@ window.APP_CONFIG = {
   START_PATTERN_DATE: "2026-01-02",
   PATTERN_SHIFT: 0
 };
+
+// NEU: Keys ans window hängen, damit sie global verfügbar sind
+window.SUPABASE_URL = window.APP_CONFIG.SUPABASE_URL;
+window.SUPABASE_ANON_KEY = window.APP_CONFIG.SUPABASE_ANON_KEY;
