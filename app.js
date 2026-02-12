@@ -536,14 +536,14 @@ document.addEventListener('DOMContentLoaded', () => {
       const { data: existing, error: selErr } = await client
         .from('mitarbeiter')
         .select('id, name')
-        .eq('name', name)
+        .match({ name })
         .limit(1);
       if (selErr) throw selErr;
       if (existing && existing.length) {
         const { error: updErr } = await client
           .from('mitarbeiter')
           .update({ aktiv })
-          .eq('id', existing[0].id);
+          .match({ id: existing[0].id });
         if (updErr) throw updErr;
       } else {
         const { error: insErr } = await client
