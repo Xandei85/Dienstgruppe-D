@@ -22,6 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
   // Mitarbeiter-Buttons (falls nicht im HTML: anlegen)
   let addEmployeeBtn = $id("addEmployeeBtn");
   let removeEmployeeBtn = $id("removeEmployeeBtn");
+  let moveUpBtn = $id("moveUpBtn");
+  let moveDownBtn = $id("moveDownBtn");
   if (!addEmployeeBtn || !removeEmployeeBtn) {
     const wrap = document.createElement("div");
     wrap.style.marginTop = "10px";
@@ -31,9 +33,26 @@ document.addEventListener("DOMContentLoaded", () => {
     removeEmployeeBtn = document.createElement("button");
     removeEmployeeBtn.id = "removeEmployeeBtn";
     removeEmployeeBtn.textContent = "Mitarbeiter entfernen";
+
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.id = "moveUpBtn";
+    moveUpBtn.textContent = "▲";
+    moveUpBtn.title = "Mitarbeiter nach oben";
+    moveUpBtn.className = "secondary mini";
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.id = "moveDownBtn";
+    moveDownBtn.textContent = "▼";
+    moveDownBtn.title = "Mitarbeiter nach unten";
+    moveDownBtn.className = "secondary mini";
+
     wrap.appendChild(addEmployeeBtn);
     wrap.appendChild(removeEmployeeBtn);
+    wrap.appendChild(moveUpBtn);
+    wrap.appendChild(moveDownBtn);
     (gridExtra || document.body).appendChild(wrap);
+    moveUpBtn = $id("moveUpBtn");
+    moveDownBtn = $id("moveDownBtn");
   }
 
   // Toast
@@ -206,25 +225,54 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Mitarbeiter aus DB (nur aktiv=true) laden
   async function loadActiveEmployees() {
-    try {
-      const rows = await sbFetch(
-        `/rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc`
-      );
-
-      const active = (rows || [])
-        .map((r) => (r?.name || "").trim())
-        .filter(Boolean);
-
-      if (active.length) return uniq(active);
-      return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
-    } catch (e) {
-      console.error("[DG-D] loadActiveEmployees REST error:", e);
-      return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
+    // Returns [{id,name,sort}] in the order we want to display
+    // If Supabase is not configured, we fall back to APP_CONFIG.NAMES (local only).
+    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      const base = (APP_CONFIG.NAMES || []).map((n, i) => ({ id: String(i), name: n, sort: i * 10 }));
+      // Optional local order
+      const stored = safeJsonParse(localStorage.getItem("dg_employees_order")) || null;
+      if (Array.isArray(stored) && stored.length) {
+        const idx = new Map(stored.map((n, i) => [n, i]));
+        base.sort((a, b) => (idx.has(a.name) ? idx.get(a.name) : 9999) - (idx.has(b.name) ? idx.get(b.name) : 9999));
+      }
+      return base;
     }
+
+    const rows = await sbFetch(
+      `/rest/v1/mitarbeiter?select=id,name,aktiv,sort&aktiv=eq.true&order=sort.asc.nullslast&order=name.asc`
+    );
+
+    const list = (Array.isArray(rows) ? rows : [])
+      .filter((r) => r && r.name)
+      .map((r, i) => ({
+        id: r.id,
+        name: r.name,
+        sort: Number.isFinite(r.sort) ? r.sort : null,
+      }));
+
+    // If sort is missing for some rows, we keep the shown order stable by synthesizing it.
+    // (We do NOT force-write to DB here — move buttons will create proper sort values when used.)
+    for (let i = 0; i < list.length; i++) {
+      if (list[i].sort === null) list[i].sort = (i + 1) * 10;
+    }
+    return list;
+  }
   }
 
   // Mitarbeiter upsert (aktiv true/false)
-  async function upsertEmployeeActive(name, aktiv) {
+  async function getNextEmployeeSort() {
+    // choose a sort value larger than existing (so new employees appear at the bottom)
+    try {
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return Date.now();
+      const rows = await sbFetch(`/rest/v1/mitarbeiter?select=sort&order=sort.desc.nullslast&limit=1`);
+      const maxSort = (Array.isArray(rows) && rows.length && Number.isFinite(rows[0].sort)) ? rows[0].sort : 0;
+      return maxSort + 10;
+    } catch {
+      return Date.now();
+    }
+  }
+
+async function upsertEmployeeActive(name, aktiv) {
     const cleanName = (name || "").trim();
     if (!cleanName) return;
 
@@ -245,10 +293,64 @@ document.addEventListener("DOMContentLoaded", () => {
       await sbFetch(`/rest/v1/mitarbeiter`, {
         method: "POST",
         headers: { Prefer: "return=minimal" },
-        body: { name: cleanName, aktiv: !!aktiv },
+        body: { name: cleanName, aktiv: !!aktiv, sort: aktiv ? await getNextEmployeeSort() : null },
       });
     }
+  
+  async function moveSelectedEmployee(direction) {
+    // direction: -1 (up) or +1 (down)
+    try {
+      const name = meSelect.value;
+      if (!name) return;
+
+      // ensure we have fresh list
+      currentEmployees = await loadActiveEmployees();
+      const idx = currentEmployees.findIndex((e) => e.name === name);
+      if (idx < 0) return;
+
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= currentEmployees.length) return;
+
+      const a = currentEmployees[idx];
+      const b = currentEmployees[newIdx];
+
+      // swap sort values
+      const tmp = a.sort;
+      a.sort = b.sort;
+      b.sort = tmp;
+
+      if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+        // local only
+        const ordered = currentEmployees.sort((x, y) => x.sort - y.sort).map((e) => e.name);
+        localStorage.setItem("dg_employees_order", JSON.stringify(ordered));
+        showToast("Reihenfolge gespeichert (lokal)");
+        await loadAndRender();
+        meSelect.value = name;
+        return;
+      }
+
+      // Persist in Supabase (requires column 'sort' in table 'mitarbeiter')
+      await sbFetch(`/rest/v1/mitarbeiter?id=eq.${encodeURIComponent(a.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: { sort: a.sort },
+      });
+      await sbFetch(`/rest/v1/mitarbeiter?id=eq.${encodeURIComponent(b.id)}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: { sort: b.sort },
+      });
+
+      showToast("Reihenfolge geändert");
+      await loadAndRender();
+      meSelect.value = name;
+    } catch (e) {
+      console.error(e);
+      showToast("Reihenfolge konnte nicht geändert werden");
+    }
   }
+
+}
 
   async function addEmployee() {
     try {
@@ -581,6 +683,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   addEmployeeBtn.addEventListener("click", addEmployee);
   removeEmployeeBtn.addEventListener("click", removeEmployee);
+  if (moveUpBtn) moveUpBtn.addEventListener("click", () => moveSelectedEmployee(-1));
+  if (moveDownBtn) moveDownBtn.addEventListener("click", () => moveSelectedEmployee(1));
 
   // Start
   loadAndRender().catch((e) => {
