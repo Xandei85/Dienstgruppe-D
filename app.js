@@ -33,6 +33,25 @@ document.addEventListener("DOMContentLoaded", () => {
     removeEmployeeBtn.textContent = "Mitarbeiter entfernen";
     wrap.appendChild(addEmployeeBtn);
     wrap.appendChild(removeEmployeeBtn);
+    // ▲ ▼ Buttons
+let moveUpBtn = document.createElement("button");
+moveUpBtn.textContent = "▲";
+moveUpBtn.style.marginLeft = "8px";
+
+let moveDownBtn = document.createElement("button");
+moveDownBtn.textContent = "▼";
+
+wrap.appendChild(moveUpBtn);
+wrap.appendChild(moveDownBtn);
+
+moveUpBtn.addEventListener("click", () => {
+  if (meSelect.value) moveEmployeeLocal(meSelect.value, -1);
+});
+
+moveDownBtn.addEventListener("click", () => {
+  if (meSelect.value) moveEmployeeLocal(meSelect.value, 1);
+});
+
     (gridExtra || document.body).appendChild(wrap);
   }
 
@@ -160,6 +179,51 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function uniq(arr) {
+    // ===== Lokale Reihenfolge =====
+const EMP_ORDER_KEY = "dg_employee_order";
+
+function loadEmployeeOrder() {
+  try {
+    return JSON.parse(localStorage.getItem(EMP_ORDER_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveEmployeeOrder(order) {
+  localStorage.setItem(EMP_ORDER_KEY, JSON.stringify(order));
+}
+
+function applyEmployeeOrder(names) {
+  const order = loadEmployeeOrder();
+  if (!order.length) return names;
+
+  const ordered = [];
+  order.forEach(n => {
+    if (names.includes(n)) ordered.push(n);
+  });
+
+  names.forEach(n => {
+    if (!ordered.includes(n)) ordered.push(n);
+  });
+
+  return ordered;
+}
+
+function moveEmployeeLocal(name, direction) {
+  const names = currentNames.slice();
+  const idx = names.indexOf(name);
+  if (idx === -1) return;
+
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= names.length) return;
+
+  [names[idx], names[newIdx]] = [names[newIdx], names[idx]];
+
+  saveEmployeeOrder(names);
+  loadAndRender();
+}
+
     const s = new Set();
     const out = [];
     (arr || []).forEach((v) => {
@@ -215,8 +279,10 @@ document.addEventListener("DOMContentLoaded", () => {
         .map((r) => (r?.name || "").trim())
         .filter(Boolean);
 
-      if (active.length) return uniq(active);
-      return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
+      if (active.length) return applyEmployeeOrder(uniq(active));
+
+      return applyEmployeeOrder(uniq([...BASE_NAMES, ...DEFAULT_EXTRA]));
+
     } catch (e) {
       console.error("[DG-D] loadActiveEmployees REST error:", e);
       return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
