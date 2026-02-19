@@ -1,78 +1,42 @@
-/* Dienstgruppe D – app.js
-   (mit Reihenfolge ▲▼ per localStorage)
-*/
+// Dienstgruppe D – saubere finale Version der app.js
+// Diese Version nutzt für die Mitarbeiterverwaltung ausschließlich die REST-API von Supabase.
+// Sie enthält keine doppelten Funktionsdefinitionen und verzichtet auf den nicht vorhandenen Supabase-Client.
 
-(() => {
-  // ===== Helpers =====
-  const $id = (id) => document.getElementById(id);
-  const enc = (s) => encodeURIComponent(String(s ?? ""));
-
-  // ===== Config / Defaults =====
+document.addEventListener("DOMContentLoaded", () => {
   const CFG = window.APP_CONFIG || {};
-  const BASE_NAMES = Array.isArray(CFG.NAMES) ? CFG.NAMES : [];
-  const DEFAULT_EXTRA = Array.isArray(CFG.DEFAULT_EXTRA) ? CFG.DEFAULT_EXTRA : ["Praktikant", "Bullen Kate"];
-  const YEAR_START = Number.isFinite(CFG.YEAR_START) ? CFG.YEAR_START : 2026;
-  const YEAR_END = Number.isFinite(CFG.YEAR_END) ? CFG.YEAR_END : 2030;
 
-  // ===== Global-ish State =====
-  let currentNames = [];
-  let selectedEmployee = null; // für Reihenfolge ▲▼
-  let currentMonth = null;
-  let currentYear = null;
-  let currentMe = null;
+  // -------- DOM Helper --------
+  const $id = (id) => document.getElementById(id);
 
-  // ===== DOM: Ensure essential buttons exist (Add/Remove + ▲▼) =====
+  const gridMain = $id("gridMain");
+  const gridExtra = $id("gridExtra"); // optional
+  const legendTop = $id("legendTop");
+  const meSelect = $id("meSelect");
+  const monthSelect = $id("monthSelect");
+  const yearSelect = $id("yearSelect");
+  const prevBtn = $id("prevBtn");
+  const nextBtn = $id("nextBtn");
+  const remarksTA = $id("remarksTA");
+  const saveRemarksBtn = $id("saveRemarksBtn");
+
+  // Mitarbeiter-Buttons (falls nicht im HTML: anlegen)
   let addEmployeeBtn = $id("addEmployeeBtn");
   let removeEmployeeBtn = $id("removeEmployeeBtn");
-
   if (!addEmployeeBtn || !removeEmployeeBtn) {
     const wrap = document.createElement("div");
     wrap.style.marginTop = "10px";
-
     addEmployeeBtn = document.createElement("button");
     addEmployeeBtn.id = "addEmployeeBtn";
     addEmployeeBtn.textContent = "Mitarbeiter hinzufügen";
-
     removeEmployeeBtn = document.createElement("button");
     removeEmployeeBtn.id = "removeEmployeeBtn";
     removeEmployeeBtn.textContent = "Mitarbeiter entfernen";
-
     wrap.appendChild(addEmployeeBtn);
     wrap.appendChild(removeEmployeeBtn);
-
-    // Reihenfolge ändern
-    const moveUpBtn = document.createElement("button");
-    moveUpBtn.id = "moveUpBtn";
-    moveUpBtn.textContent = "▲";
-    moveUpBtn.title = "Ausgewählten Mitarbeiter nach oben";
-
-    const moveDownBtn = document.createElement("button");
-    moveDownBtn.id = "moveDownBtn";
-    moveDownBtn.textContent = "▼";
-    moveDownBtn.title = "Ausgewählten Mitarbeiter nach unten";
-
-    wrap.appendChild(moveUpBtn);
-    wrap.appendChild(moveDownBtn);
-
-    // falls es ein gridExtra gibt, sonst body
-    const gridExtra = $id("gridExtra");
     (gridExtra || document.body).appendChild(wrap);
   }
 
-  // Style für Auswahl (Reihenfolge ▲▼)
-  if (!document.getElementById("dg-reorder-style")) {
-    const st = document.createElement("style");
-    st.id = "dg-reorder-style";
-    st.textContent = `
-      tr.row-selected td.name-col {
-        box-shadow: inset 0 0 0 2px #1e90ff;
-        font-weight: 700;
-      }
-    `;
-    document.head.appendChild(st);
-  }
-
-  // ===== Toast =====
+  // Toast
   const toastEl =
     $id("toast") ||
     (() => {
@@ -87,542 +51,629 @@
   function showToast(msg) {
     try {
       console.log("[DG-D]", msg);
-      toastEl.textContent = msg;
-      toastEl.style.opacity = "1";
-      clearTimeout(toastTimeout);
-      toastTimeout = setTimeout(() => (toastEl.style.opacity = "0"), 2200);
     } catch {}
+    toastEl.textContent = msg;
+    toastEl.style.opacity = "1";
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => (toastEl.style.opacity = "0"), 2200);
   }
 
-  // ===== Storage Keys =====
-  const KEY_ME = "dg_me";
-  const KEY_MONTH = "dg_month";
-  const KEY_YEAR = "dg_year";
+  // -------- State / Config --------
+  const BASE_NAMES = Array.isArray(CFG.NAMES) ? CFG.NAMES.slice() : [];
+  const DEFAULT_EXTRA = ["Praktikant", "Glowczewski", "Kathi", "Bullen Kate"];
 
-  // ===== Utils =====
+  const YEAR_START = CFG.YEAR_START || new Date().getFullYear();
+  const YEAR_END = CFG.YEAR_END || YEAR_START;
+  const YEAR_MAX = Math.max(YEAR_END, 2030);
+
+  const START_PATTERN_DATE = CFG.START_PATTERN_DATE
+    ? new Date(CFG.START_PATTERN_DATE)
+    : new Date(YEAR_START, 0, 2);
+  const PATTERN_SHIFT = CFG.PATTERN_SHIFT || 0;
+
+  const currentDate = new Date(YEAR_START, 0, 1);
+
+  let currentNames = [];
+  // Persisted employee order (localStorage key). We keep a stable order across page reloads
+  const ORDER_KEY = 'DienstgruppeD_order';
+
+  /**
+   * Load the stored order from localStorage.
+   * @returns {string[]}
+   */
+  function loadOrder() {
+    try {
+      const raw = localStorage.getItem(ORDER_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /**
+   * Save the given order into localStorage.
+   * @param {string[]} names
+   */
+  function saveOrder(names) {
+    try {
+      localStorage.setItem(ORDER_KEY, JSON.stringify(names));
+    } catch (_) {
+      /* ignore storage errors */
+    }
+  }
+
+  /**
+   * Apply a persisted order to an array of names. Any names not present in the
+   * stored order will be appended to the end of the list. This ensures that
+   * newly added employees still appear even if they weren’t previously ordered.
+   * @param {string[]} names
+   * @returns {string[]}
+   */
+  function applyOrder(names) {
+    const order = loadOrder();
+    if (!order || !order.length) return names.slice();
+    const set = new Set(names);
+    // Only include names that still exist
+    const filteredOrder = order.filter((n) => set.has(n));
+    const extras = names.filter((n) => !filteredOrder.includes(n));
+    return [...filteredOrder, ...extras];
+  }
+
+  /**
+   * Move a name within the currentNames list from one index to another and persist
+   * the new order. If the target index is invalid, nothing happens.
+   * @param {number} from
+   * @param {number} to
+   */
+  function moveName(from, to) {
+    const arr = currentNames.slice();
+    if (to < 0 || to >= arr.length || from < 0 || from >= arr.length) return;
+    const [item] = arr.splice(from, 1);
+    arr.splice(to, 0, item);
+    currentNames = arr;
+    saveOrder(arr);
+    // Rebuild the dropdown and re-render the grid
+    rebuildMeSelect(currentNames);
+    renderGrid(currentNames, gridMain, {});
+  }
+  let selectedCode = null;
+  let overrideMap = {}; // `${name}|${day}` => +1 / -1
+  const holidayCache = {};
+
+  // -------- Ferien / Feiertage / Gelbpattern --------
+  function isFerien(date) {
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    if (m === 1 && d <= 5) return true;
+    if (m === 2 && d >= 16 && d <= 20) return true;
+    if ((m === 3 && d >= 30) || (m === 4 && d <= 10)) return true;
+    if (m === 6 && d >= 2 && d <= 5) return true;
+    if ((m === 8 && d >= 3) || (m === 9 && d <= 14)) return true;
+    if (m === 11 && d >= 2 && d <= 6) return true;
+    if (m === 12 && d >= 23) return true;
+    return false;
+  }
+
+  function daysBetween(date1, date2) {
+    const t1 = Date.UTC(date1.getFullYear(), date1.getMonth(), date1.getDate());
+    const t2 = Date.UTC(date2.getFullYear(), date2.getMonth(), date2.getDate());
+    return Math.floor((t2 - t1) / 86400000);
+  }
+
+  function isYellowDay(date) {
+    const start = new Date(START_PATTERN_DATE);
+    const diff = daysBetween(start, date) + PATTERN_SHIFT;
+    const mod = ((diff % 4) + 4) % 4;
+    return mod === 0 || mod === 1;
+  }
+
+  function calcEaster(year) {
+    const f = Math.floor;
+    const G = year % 19;
+    const C = f(year / 100);
+    const H = (C - f(C / 4) - f((8 * C + 13) / 25) + 19 * G + 15) % 30;
+    const I = H - f(H / 28) * (1 - f(29 / (H + 1)) * f((21 - G) / 11));
+    const J = (year + f(year / 4) + I + 2 - C + f(C / 4)) % 7;
+    const L = I - J;
+    const month = 3 + f((L + 40) / 44);
+    const day = L + 28 - 31 * f(month / 4);
+    return new Date(year, month - 1, day);
+  }
+
+  function getHolidays(year) {
+    const easter = calcEaster(year);
+    const list = [];
+    const toStr = (d) => `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+
+    list.push(`${year}-1-1`);
+    list.push(`${year}-1-6`);
+
+    const gf = new Date(easter);
+    gf.setDate(easter.getDate() - 2);
+    list.push(toStr(gf));
+    const em = new Date(easter);
+    em.setDate(easter.getDate() + 1);
+    list.push(toStr(em));
+
+    list.push(`${year}-5-1`);
+
+    const asc = new Date(easter);
+    asc.setDate(easter.getDate() + 39);
+    list.push(toStr(asc));
+    const pm = new Date(easter);
+    pm.setDate(easter.getDate() + 50);
+    list.push(toStr(pm));
+    const cc = new Date(easter);
+    cc.setDate(easter.getDate() + 60);
+    list.push(toStr(cc));
+
+    list.push(`${year}-8-15`);
+    list.push(`${year}-10-3`);
+    list.push(`${year}-11-1`);
+    list.push(`${year}-12-25`);
+    list.push(`${year}-12-26`);
+    return list;
+  }
+
+  function isHoliday(date) {
+    const y = date.getFullYear();
+    if (!holidayCache[y]) holidayCache[y] = new Set(getHolidays(y));
+    return holidayCache[y].has(`${y}-${date.getMonth() + 1}-${date.getDate()}`);
+  }
+
   function uniq(arr) {
     const s = new Set();
     const out = [];
     (arr || []).forEach((v) => {
       const t = String(v || "").trim();
-      if (!t) return;
-      if (s.has(t)) return;
+      if (!t || s.has(t)) return;
       s.add(t);
       out.push(t);
     });
     return out;
   }
 
-  // ---- Lokale Reihenfolge (Mitarbeiter nach oben/unten verschieben) ----
-  const EMP_ORDER_KEY = "dg_employee_order";
+  // ============================
+  // Supabase REST (ohne supabase-js) – nur für Mitarbeiterverwaltung
+  // ============================
+  function sbRestUrl(path) {
+    return `${String(SUPABASE_URL).replace(/\/$/, "")}${path}`;
+  }
 
-  function loadEmployeeOrder() {
+  async function sbFetch(path, { method = "GET", body = null, headers = {} } = {}) {
+    const res = await fetch(sbRestUrl(path), {
+      method,
+      headers: {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        ...headers,
+      },
+      body: body ? JSON.stringify(body) : null,
+    });
+
+    const text = await res.text();
+    let data = null;
     try {
-      return JSON.parse(localStorage.getItem(EMP_ORDER_KEY)) || [];
+      data = text ? JSON.parse(text) : null;
     } catch {
-      return [];
+      data = text;
     }
-  }
 
-  function saveEmployeeOrder(order) {
-    try {
-      localStorage.setItem(EMP_ORDER_KEY, JSON.stringify(order));
-    } catch {}
-  }
-
-  // nimmt eine Namensliste und sortiert sie nach gespeicherter Reihenfolge,
-  // neue/unbekannte Namen werden hinten angehängt
-  function applyEmployeeOrder(names) {
-    const order = loadEmployeeOrder();
-    if (!Array.isArray(names) || names.length === 0) return [];
-    if (!Array.isArray(order) || order.length === 0) return names.slice();
-
-    const ordered = [];
-    order.forEach((n) => {
-      if (names.includes(n) && !ordered.includes(n)) ordered.push(n);
-    });
-    names.forEach((n) => {
-      if (!ordered.includes(n)) ordered.push(n);
-    });
-    return ordered;
-  }
-
-  function moveEmployeeLocal(name, direction) {
-    if (!name) return;
-    const names = currentNames.slice();
-    const idx = names.indexOf(name);
-    if (idx === -1) return;
-
-    const newIdx = idx + direction;
-    if (newIdx < 0 || newIdx >= names.length) return;
-
-    [names[idx], names[newIdx]] = [names[newIdx], names[idx]];
-    currentNames = names;
-    saveEmployeeOrder(currentNames);
-    selectedEmployee = name;
-    renderGrid();
-  }
-
-  // ===== Supabase (optional) =====
-  const SUPABASE_URL = window.SUPABASE_URL || CFG.SUPABASE_URL || "";
-  const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY || CFG.SUPABASE_ANON_KEY || "";
-  const hasSupabase = !!(SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase);
-
-  let supa = null;
-  if (hasSupabase) {
-    try {
-      supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    } catch (e) {
-      console.warn("Supabase init failed:", e);
-      supa = null;
+    if (!res.ok) {
+      throw new Error(`Supabase REST Fehler ${res.status}: ${text}`);
     }
+    return data;
   }
 
-  // ===== Load / Save active employees =====
+  // Mitarbeiter aus DB (nur aktiv=true) laden
   async function loadActiveEmployees() {
-    // Wenn kein Supabase -> Config Namen + Default extra
-    if (!supa) return applyEmployeeOrder(uniq([...BASE_NAMES, ...DEFAULT_EXTRA]));
-
     try {
-      // Tabelle "Mitarbeiter": Spalten name (text) + aktiv (bool)
-      const { data, error } = await supa
-        .from("Mitarbeiter")
-        .select("name, aktiv")
-        .order("created_at", { ascending: true });
+      const rows = await sbFetch(
+        `/rest/v1/mitarbeiter?select=name,aktiv&aktiv=eq.true&order=name.asc`
+      );
 
-      if (error) throw error;
+      const active = (rows || [])
+        .map((r) => (r?.name || "").trim())
+        .filter(Boolean);
 
-      const active = (data || [])
-        .filter((r) => r && r.aktiv === true && String(r.name || "").trim())
-        .map((r) => String(r.name).trim());
-
-      return applyEmployeeOrder(uniq(active));
+      if (active.length) return uniq(active);
+      return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
     } catch (e) {
-      console.warn("[DG-D] loadActiveEmployees REST error:", e);
-      return applyEmployeeOrder(uniq([...BASE_NAMES, ...DEFAULT_EXTRA]));
+      console.error("[DG-D] loadActiveEmployees REST error:", e);
+      return uniq([...BASE_NAMES, ...DEFAULT_EXTRA]);
     }
   }
 
-  async function addEmployee(name) {
-    const n = String(name || "").trim();
-    if (!n) return showToast("Bitte Namen eingeben");
-    if (!supa) {
-      // local-only: nur Reihenfolge/Anzeige
-      if (!currentNames.includes(n)) {
-        currentNames = uniq([...currentNames, n]);
-        saveEmployeeOrder(currentNames);
-        showToast("Hinzugefügt (lokal)");
-        renderGrid();
-      }
-      return;
-    }
+  // Mitarbeiter upsert (aktiv true/false)
+  async function upsertEmployeeActive(name, aktiv) {
+    const cleanName = (name || "").trim();
+    if (!cleanName) return;
 
+    const qName = encodeURIComponent(cleanName);
+    const found = await sbFetch(
+      `/rest/v1/mitarbeiter?select=id,name&name=eq.${qName}&limit=1`
+    );
+
+    if (Array.isArray(found) && found.length) {
+      const id = found[0].id;
+      const qId = encodeURIComponent(id);
+      await sbFetch(`/rest/v1/mitarbeiter?id=eq.${qId}`, {
+        method: "PATCH",
+        headers: { Prefer: "return=minimal" },
+        body: { aktiv: !!aktiv },
+      });
+    } else {
+      await sbFetch(`/rest/v1/mitarbeiter`, {
+        method: "POST",
+        headers: { Prefer: "return=minimal" },
+        body: { name: cleanName, aktiv: !!aktiv },
+      });
+    }
+  }
+
+  async function addEmployee() {
     try {
-      // Upsert: wenn vorhanden -> aktiv=true, sonst insert
-      const { data: existing } = await supa.from("Mitarbeiter").select("id,name").eq("name", n).limit(1);
-      if (existing && existing.length) {
-        await supa.from("Mitarbeiter").update({ aktiv: true }).eq("name", n);
-      } else {
-        await supa.from("Mitarbeiter").insert([{ name: n, aktiv: true }]);
-      }
-      showToast("Mitarbeiter hinzugefügt");
+      const name = prompt("Name des neuen Mitarbeiters:");
+      if (!name) return;
+      await upsertEmployeeActive(name, true);
+      showToast("Mitarbeiter hinzugefügt: " + name);
       await loadAndRender();
     } catch (e) {
-      console.warn(e);
+      console.error(e);
       showToast("Fehler beim Hinzufügen");
     }
   }
 
-  async function removeEmployee(name) {
-    const n = String(name || "").trim();
-    if (!n) return showToast("Bitte Namen auswählen");
-    if (!supa) {
-      currentNames = currentNames.filter((x) => x !== n);
-      saveEmployeeOrder(currentNames);
-      if (selectedEmployee === n) selectedEmployee = null;
-      showToast("Entfernt (lokal)");
-      renderGrid();
-      return;
-    }
-
+  async function removeEmployee() {
     try {
-      await supa.from("Mitarbeiter").update({ aktiv: false }).eq("name", n);
-      showToast("Mitarbeiter entfernt");
+      const name = meSelect.value;
+      if (!name) return;
+      if (!confirm(`Mitarbeiter wirklich deaktivieren?\n\n${name}`)) return;
+      await upsertEmployeeActive(name, false);
+      showToast("Mitarbeiter deaktiviert: " + name);
       await loadAndRender();
     } catch (e) {
-      console.warn(e);
+      console.error(e);
       showToast("Fehler beim Entfernen");
     }
   }
 
-  // ===== UI: selects =====
-  const meSelect = $id("meSelect") || $id("me") || $id("ichbin") || $id("ichBin");
-  const monthSelect = $id("monthSelect") || $id("month") || $id("monat");
-  const yearSelect = $id("yearSelect") || $id("year") || $id("jahr");
-  const openBtn = $id("openBtn") || $id("open") || $id("öffnenBtn") || $id("oeffnenBtn");
-
-  function monthName(m) {
-    const names = [
-      "Januar",
-      "Februar",
-      "März",
-      "April",
-      "Mai",
-      "Juni",
-      "Juli",
-      "August",
-      "September",
-      "Oktober",
-      "November",
-      "Dezember",
-    ];
-    return names[m] || "";
-  }
-
-  function buildMonthOptions() {
-    if (!monthSelect) return;
+  // -------- UI: Month/Year Selects --------
+  function buildMonthYearSelects() {
     monthSelect.innerHTML = "";
-    for (let m = 0; m < 12; m++) {
+    yearSelect.innerHTML = "";
+
+    for (let i = 0; i < 12; i++) {
+      const dt = new Date(2023, i, 1);
       const opt = document.createElement("option");
-      opt.value = String(m + 1);
-      opt.textContent = monthName(m);
+      opt.value = i;
+      opt.textContent = dt.toLocaleString("de", { month: "long" });
       monthSelect.appendChild(opt);
     }
-  }
-
-  function buildYearOptions() {
-    if (!yearSelect) return;
-    yearSelect.innerHTML = "";
-    for (let y = YEAR_START; y <= YEAR_END; y++) {
+    for (let y = YEAR_START; y <= YEAR_MAX; y++) {
       const opt = document.createElement("option");
-      opt.value = String(y);
-      opt.textContent = String(y);
+      opt.value = y;
+      opt.textContent = y;
       yearSelect.appendChild(opt);
     }
   }
 
-  function saveMe() {
-    try {
-      localStorage.setItem(KEY_ME, currentMe || "");
-    } catch {}
-  }
-  function saveMonthYear() {
-    try {
-      localStorage.setItem(KEY_MONTH, String(currentMonth || ""));
-      localStorage.setItem(KEY_YEAR, String(currentYear || ""));
-    } catch {}
+  function refreshSelects() {
+    monthSelect.value = String(currentDate.getMonth());
+    yearSelect.value = String(currentDate.getFullYear());
   }
 
-  function loadSavedSelections() {
-    try {
-      currentMe = localStorage.getItem(KEY_ME) || "";
-      const m = Number(localStorage.getItem(KEY_MONTH));
-      const y = Number(localStorage.getItem(KEY_YEAR));
-      const now = new Date();
-      currentMonth = Number.isFinite(m) && m >= 1 && m <= 12 ? m : now.getMonth() + 1;
-      currentYear = Number.isFinite(y) && y >= YEAR_START && y <= YEAR_END ? y : now.getFullYear();
-    } catch {
-      const now = new Date();
-      currentMonth = now.getMonth() + 1;
-      currentYear = now.getFullYear();
-    }
-  }
-
-  function fillMeSelect(namesArr) {
-    if (!meSelect) return;
+  function rebuildMeSelect(namesArr) {
+    const prev = meSelect.value;
     meSelect.innerHTML = "";
-    (namesArr || []).forEach((name) => {
+    namesArr.forEach((n) => {
       const opt = document.createElement("option");
-      opt.value = name;
-      opt.textContent = name;
+      opt.value = n;
+      opt.textContent = n;
       meSelect.appendChild(opt);
     });
-    if (currentMe && namesArr.includes(currentMe)) {
-      meSelect.value = currentMe;
-    } else if (namesArr.length) {
-      meSelect.value = namesArr[0];
-      currentMe = namesArr[0];
-      saveMe();
+    if (prev && namesArr.includes(prev)) meSelect.value = prev;
+    else if (namesArr.length) meSelect.value = namesArr[0];
+  }
+
+  // -------- Legend / Codes --------
+  const codes = [
+    { code: "N", label: "N" },
+    { code: "F", label: "F" },
+    { code: "S", label: "S" },
+    { code: "U2", label: "U2" },
+    { code: "U", label: "U" },
+    { code: "AA", label: "AA" },
+    { code: "AZA", label: "AZA" },
+    { code: "AZA6", label: "AZA6" },
+    { code: "AZA12", label: "AZA12" },
+    { code: "W2Y", label: "Weiß→Gelb" },
+    { code: "Y2W", label: "Gelb→Weiß" },
+    { code: "BEER", label: "🍺" },
+    { code: "PARTY", label: "🥳" },
+    { code: "GV", label: "GV" },
+    { code: "LG", label: "LG" },
+    { code: "PE", label: "PE" },
+    { code: "STAR", label: "★" },
+    { code: "X", label: "X" },
+  ];
+
+  function buildLegend() {
+    if (!legendTop) return;
+    legendTop.innerHTML = "";
+    codes.forEach(({ code, label }) => {
+      const btn = document.createElement("button");
+      btn.className = "legend-btn";
+      btn.dataset.code = code;
+      btn.textContent = label;
+      btn.addEventListener("click", () => {
+        selectedCode = code;
+        document.querySelectorAll(".legend-btn").forEach((b) => {
+          b.classList.toggle("active", b === btn);
+        });
+        showToast(
+          "Modus: " + label + (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : "")
+        );
+      });
+      legendTop.appendChild(btn);
+    });
+  }
+
+  // -------- Render Grid --------
+  function getCodeClass(val) {
+    switch (val) {
+      case "U":
+      case "S":
+      case "F":
+      case "N":
+        return "code-U";
+      case "U2":
+        return "code-u2";
+      case "AA":
+        return "code-AA";
+      case "AZA":
+        return "code-AZA";
+      case "AZA6":
+        return "code-AZA6";
+      case "AZA12":
+        return "code-AZA12";
+      case "GV":
+        return "code-GV";
+      case "LG":
+        return "code-LG";
+      case "PE":
+        return "code-PE";
+      default:
+        return "";
     }
   }
 
-  // ===== Grid data (deine bestehende Logik) =====
-  // Hier werden deine bestehenden Funktionen/Logik erwartet:
-  // - getMonthDays(year, month)
-  // - getWeekdayShort(...)
-  // - isHolidayBY(...)
-  // - loadMonthData(...)
-  // - saveMonthData(...)
-  // - etc.
-  //
-  // In deiner laufenden Version sind die Funktionen bereits im app.js vorhanden.
-  // Falls du später meldest, dass Funktionen fehlen, sag mir den Konsolenfehler,
-  // dann ergänze ich GENAU die fehlenden Stellen.
+  function renderGrid(namesArr, container, valueMap) {
+    const y = currentDate.getFullYear();
+    const mIdx = currentDate.getMonth();
+    const daysInMonth = new Date(y, mIdx + 1, 0).getDate();
 
-  // ======= DEIN bestehender Codeblock ab hier =======
-  // Ich habe aus deiner hochgeladenen app(1).js den Rest übernommen
-  // und nur minimal an 3 Stellen angefasst:
-  // 1) applyEmployeeOrder + moveEmployeeLocal + selectedEmployee
-  // 2) loadActiveEmployees return applyEmployeeOrder(...)
-  // 3) renderGrid: Name klickbar + Row selected + ▲▼ Buttons
-
-  // ---- BEGIN (übernommen aus deiner Version) ----
-
-  // ====== Kalender / Ferien / Raster ======
-  function daysInMonth(year, month1to12) {
-    return new Date(year, month1to12, 0).getDate();
-  }
-  function weekdayShort(year, month1to12, day) {
-    const d = new Date(year, month1to12 - 1, day);
-    const map = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
-    return map[d.getDay()];
-  }
-
-  // Bayern-Ferien/Feiertage: In deiner Live-Version hast du das schon.
-  // Hier lassen wir es so wie bei dir (placeholder -> false),
-  // weil du gesagt hast: in der laufenden Version ist es korrekt.
-  // Wenn du willst, kann ich deine Ferien-Logik 1:1 wieder einbauen.
-  function isFerienBY(/*year, month1to12, day*/) {
-    return false;
-  }
-
-  // ====== Monatsdaten (localStorage) ======
-  const KEY_MONTHDATA = "dg_month_data_v1";
-  const KEY_REMARKS = "dg_remarks_v1";
-
-  function loadAllData() {
-    try {
-      return JSON.parse(localStorage.getItem(KEY_MONTHDATA)) || {};
-    } catch {
-      return {};
-    }
-  }
-  function saveAllData(obj) {
-    try {
-      localStorage.setItem(KEY_MONTHDATA, JSON.stringify(obj));
-    } catch {}
-  }
-
-  function ymKey(y, m) {
-    return `${y}-${String(m).padStart(2, "0")}`;
-  }
-
-  function loadMonthData(y, m) {
-    const all = loadAllData();
-    return all[ymKey(y, m)] || {};
-  }
-
-  function saveMonthData(y, m, data) {
-    const all = loadAllData();
-    all[ymKey(y, m)] = data || {};
-    saveAllData(all);
-  }
-
-  function loadRemarks(y, m) {
-    try {
-      const all = JSON.parse(localStorage.getItem(KEY_REMARKS)) || {};
-      return all[ymKey(y, m)] || "";
-    } catch {
-      return "";
-    }
-  }
-
-  function saveRemarks(y, m, text) {
-    try {
-      const all = JSON.parse(localStorage.getItem(KEY_REMARKS)) || {};
-      all[ymKey(y, m)] = text || "";
-      localStorage.setItem(KEY_REMARKS, JSON.stringify(all));
-    } catch {}
-  }
-
-  // ====== Schichtmuster (Gelb/Weiß) – wie in deiner Live-Version ======
-  const START_PATTERN_DATE = CFG.START_PATTERN_DATE || "2026-01-02";
-  const PATTERN_SHIFT = Number.isFinite(CFG.PATTERN_SHIFT) ? CFG.PATTERN_SHIFT : 0;
-
-  function isWorkdayPattern(y, m, d) {
-    const [sy, sm, sd] = String(START_PATTERN_DATE).split("-").map((x) => parseInt(x, 10));
-    const start = new Date(sy, (sm || 1) - 1, sd || 1);
-    const cur = new Date(y, m - 1, d);
-    const diffDays = Math.floor((cur - start) / (1000 * 60 * 60 * 24));
-    const idx = (diffDays + PATTERN_SHIFT) % 4; // 0..3
-    // 2 Tage Arbeit (gelb) + 2 Tage frei (weiß)
-    return idx === 0 || idx === 1;
-  }
-
-  // ====== UI elements ======
-  const grid = $id("grid") || $id("table") || $id("dgTable");
-  const remarksEl = $id("remarks") || $id("remarksMonth") || $id("bemerkungenMonat");
-
-  function renderGrid() {
-    if (!grid) return;
-
-    const y = currentYear;
-    const m = currentMonth;
-    const dmax = daysInMonth(y, m);
-
-    const monthData = loadMonthData(y, m);
-
-    // Header
-    let html = "";
-    html += `<table class="dg-table"><thead><tr>`;
-    html += `<th class="name-col">Name</th>`;
-    for (let d = 1; d <= 31; d++) {
-      if (d <= dmax) {
-        const wd = weekdayShort(y, m, d);
-        const ferien = isFerienBY(y, m, d);
-        const cls = [
-          "dayhead",
-          wd === "Sa" ? "sat" : "",
-          wd === "So" ? "sun" : "",
-          ferien ? "ferien" : "",
-        ]
-          .filter(Boolean)
-          .join(" ");
-        html += `<th class="${cls}"><div class="dnum">${d}</div><div class="wd">${wd}</div></th>`;
-      } else {
-        html += `<th class="dayhead off"></th>`;
-      }
+    let html = `<table class="grid-table"><thead><tr><th class="name-col">Name</th>`;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dt = new Date(y, mIdx, d);
+      const wd = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"][dt.getDay()];
+      const cls = [];
+      if (dt.getDay() === 6) cls.push("sat");
+      if (dt.getDay() === 0) cls.push("sun");
+      if (isHoliday(dt) || isFerien(dt)) cls.push("ferienday");
+      html += `<th class="${cls.join(" ")}">${d}<div class="wd">${wd}</div></th>`;
     }
     html += `</tr></thead><tbody>`;
 
-    // Rows
-    currentNames.forEach((name) => {
-      html += `<tr data-name="${encodeURIComponent(name)}" class="${
-        name === selectedEmployee ? "row-selected" : ""
-      }"><td class="name-col name-click">${name}</td>`;
+    (namesArr || []).forEach((name, idx) => {
+      // Name column: include move up/down buttons
+      let nameCell = `<td class="name-col name-click" data-idx="${idx}">`;
+      nameCell += `<span class="emp-name">${name}</span>`;
+      // Up/down controls
+      nameCell += `<button class="emp-move emp-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
+      nameCell += `<button class="emp-move emp-down" data-idx="${idx}" ${idx === (namesArr.length - 1) ? 'disabled' : ''}>▼</button>`;
+      nameCell += `</td>`;
+      html += `<tr data-name="${encodeURIComponent(name)}">${nameCell}`;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dt = new Date(y, mIdx, d);
+        let classes = ["cell"];
+        if (name !== "Bullen Kate" && isYellowDay(dt)) classes.push("yellow");
 
-      for (let d = 1; d <= 31; d++) {
-        if (d <= dmax) {
-          const key = `${enc(name)}::${y}-${m}-${d}`;
-          const val = monthData[key] || "";
-          const isWork = isWorkdayPattern(y, m, d);
-          const cls = ["cell", isWork ? "work" : "free"].join(" ");
-          html += `<td class="${cls}" data-key="${enc(key)}">${val ? `<span>${val}</span>` : ""}</td>`;
-        } else {
-          html += `<td class="cell off"></td>`;
+        const key = `${name}|${d}`;
+        if (overrideMap[key] === 1) {
+          if (!classes.includes("yellow")) classes.push("yellow");
+          classes.push("force-yellow");
+        } else if (overrideMap[key] === -1) {
+          classes = classes.filter((c) => c !== "yellow");
+          classes.push("no-yellow");
         }
-      }
 
+        const val = valueMap[key] || "";
+        const codeClass = getCodeClass(val);
+        if (codeClass) classes.push(codeClass);
+
+        let content = val;
+        if (val === "BEER") content = "🍺";
+        if (val === "PARTY") content = "🥳";
+        if (val === "STAR") content = "★";
+
+        html += `<td class="${classes.join(" ")}" data-day="${d}">${content || ""}</td>`;
+      }
       html += `</tr>`;
     });
 
     html += `</tbody></table>`;
-    grid.innerHTML = html;
+    container.innerHTML = html;
 
-    // Name click => Auswahl + Ich bin
-    grid.querySelectorAll(".name-click").forEach((el) => {
+    // Click name -> set meSelect
+    container.querySelectorAll(".name-click").forEach((el) => {
       el.addEventListener("click", () => {
         const n = el.textContent.trim();
-        if (!n) return;
-        if (meSelect) meSelect.value = n;
-        currentMe = n;
-        selectedEmployee = n;
-        saveMe();
-        renderGrid();
+        if (n) meSelect.value = n;
       });
     });
 
-    // Cell click => Toggle with active button (deine vorhandene Button-Logik ist in deiner Live-Version umfangreicher)
-    // Hier minimal: Klick toggelt "X" (nur Demo)
-    grid.querySelectorAll("td.cell[data-key]").forEach((td) => {
-      td.addEventListener("click", () => {
-        const k = decodeURIComponent(td.getAttribute("data-key") || "");
-        if (!k) return;
-        const data = loadMonthData(y, m);
-        data[k] = data[k] ? "" : "X";
-        saveMonthData(y, m, data);
-        renderGrid();
+    // Cell interactions
+    container.querySelectorAll("td.cell").forEach((td) => {
+      td.addEventListener("mousedown", async (ev) => {
+        ev.preventDefault();
+        if (!selectedCode) return;
+
+        const tr = td.closest("tr");
+        const name = decodeURIComponent(tr.dataset.name || "");
+        const day = parseInt(td.dataset.day, 10);
+
+        // nur eigene Zeile
+        if (meSelect.value && name !== meSelect.value) {
+          showToast("Nur in deiner Zeile eintragbar");
+          return;
+        }
+
+        await applyCode(name, day, selectedCode);
+      });
+    });
+
+    // Attach reorder event listeners. Moving names only affects order, not other values.
+    container.querySelectorAll('button.emp-up').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        moveName(idx, idx - 1);
+      });
+    });
+    container.querySelectorAll('button.emp-down').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const idx = parseInt(btn.getAttribute('data-idx'), 10);
+        moveName(idx, idx + 1);
       });
     });
   }
 
+  async function applyCode(name, day, code) {
+    const y = currentDate.getFullYear();
+    const m = currentDate.getMonth() + 1;
+    const key = `${name}|${day}`;
+
+    try {
+      if (code === "W2Y") {
+        overrideMap[key] = 1;
+        if (window.saveOverride) await window.saveOverride({ year: y, month: m, name, day, yellow_override: 1 });
+      } else if (code === "Y2W") {
+        overrideMap[key] = -1;
+        if (window.saveOverride) await window.saveOverride({ year: y, month: m, name, day, yellow_override: -1 });
+      } else if (code === "X") {
+        if (window.saveCell) await window.saveCell({ year: y, month: m, name, day, value: "" });
+      } else {
+        if (window.saveCell) await window.saveCell({ year: y, month: m, name, day, value: code });
+      }
+      await loadAndRender();
+    } catch (e) {
+      console.error(e);
+      showToast("Fehler beim Speichern");
+    }
+  }
+
+  // -------- Load & Render --------
   async function loadAndRender() {
+    refreshSelects();
+
+    const y = currentDate.getFullYear();
+    const m = currentDate.getMonth() + 1;
+
+    // 1) Namen
     currentNames = await loadActiveEmployees();
-    saveEmployeeOrder(currentNames);
+    // Apply persisted order to the names so that a user-defined order is respected.
+    currentNames = applyOrder(currentNames);
+    rebuildMeSelect(currentNames);
 
-    fillMeSelect(currentNames);
-
-    if (monthSelect) monthSelect.value = String(currentMonth);
-    if (yearSelect) yearSelect.value = String(currentYear);
-
-    // Bemerkungen
-    if (remarksEl) {
-      remarksEl.value = loadRemarks(currentYear, currentMonth);
+    // 2) Werte (Dienstplan)
+    let entries = [];
+    try {
+      if (window.loadMonth) entries = await window.loadMonth({ year: y, month: m });
+    } catch (e) {
+      entries = [];
     }
 
-    renderGrid();
-  }
-
-  // ====== Events ======
-  if (meSelect) {
-    meSelect.addEventListener("change", () => {
-      currentMe = meSelect.value;
-      selectedEmployee = currentMe;
-      saveMe();
-      renderGrid();
+    const valueMap = {};
+    (entries || []).forEach((rec) => {
+      if (rec && rec.name && typeof rec.day !== "undefined") {
+        valueMap[`${rec.name}|${rec.day}`] = rec.value;
+      }
     });
-  }
 
-  if (monthSelect) {
-    monthSelect.addEventListener("change", () => {
-      currentMonth = Number(monthSelect.value);
-      saveMonthYear();
-      loadAndRender();
+    // 3) Overrides
+    let overrides = [];
+    try {
+      if (window.loadOverrides) overrides = await window.loadOverrides({ year: y, month: m });
+    } catch (e) {
+      overrides = [];
+    }
+
+    overrideMap = {};
+    (overrides || []).forEach((r) => {
+      if (!r) return;
+      overrideMap[`${r.name}|${r.day}`] = r.yellow_override;
     });
+
+    // 4) Bemerkungen
+    try {
+      if (window.loadRemarks) {
+        const txt = await window.loadRemarks({ year: y, month: m });
+        remarksTA.value = txt || "";
+      }
+    } catch (e) {
+      remarksTA.value = "";
+    }
+
+    // 5) Render
+    renderGrid(currentNames, gridMain, valueMap);
+    if (gridExtra) gridExtra.innerHTML = "";
   }
 
-  if (yearSelect) {
-    yearSelect.addEventListener("change", () => {
-      currentYear = Number(yearSelect.value);
-      saveMonthYear();
-      loadAndRender();
-    });
-  }
+  // -------- Events --------
+  buildMonthYearSelects();
+  buildLegend();
 
-  if (openBtn) {
-    openBtn.addEventListener("click", () => {
-      // Bei dir gibt es Monatsansicht/Navigation – hier lassen wir’s neutral
-      saveMonthYear();
-      renderGrid();
-    });
-  }
-
-  addEmployeeBtn.addEventListener("click", async () => {
-    const name = prompt("Neuen Mitarbeiter eingeben:");
-    if (!name) return;
-    await addEmployee(name);
+  prevBtn.addEventListener("click", async () => {
+    currentDate.setMonth(currentDate.getMonth() - 1);
+    await loadAndRender();
+  });
+  nextBtn.addEventListener("click", async () => {
+    currentDate.setMonth(currentDate.getMonth() + 1);
+    await loadAndRender();
+  });
+  monthSelect.addEventListener("change", async () => {
+    currentDate.setMonth(parseInt(monthSelect.value, 10));
+    await loadAndRender();
+  });
+  yearSelect.addEventListener("change", async () => {
+    currentDate.setFullYear(parseInt(yearSelect.value, 10));
+    await loadAndRender();
   });
 
-  removeEmployeeBtn.addEventListener("click", async () => {
-    const name = prompt("Mitarbeiter entfernen (Name exakt):");
-    if (!name) return;
-    await removeEmployee(name);
+  saveRemarksBtn.addEventListener("click", async () => {
+    try {
+      const y = currentDate.getFullYear();
+      const m = currentDate.getMonth() + 1;
+      const txt = remarksTA.value || "";
+      if (window.saveRemarks) await window.saveRemarks({ year: y, month: m, text: txt });
+      showToast("Bemerkungen gespeichert");
+    } catch (e) {
+      console.error(e);
+      showToast("Fehler beim Speichern");
+    }
   });
 
-  // ▲▼ Reihenfolge Buttons
-  const moveUpBtnEl = $id("moveUpBtn");
-  const moveDownBtnEl = $id("moveDownBtn");
-  if (moveUpBtnEl)
-    moveUpBtnEl.addEventListener("click", () => {
-      if (!selectedEmployee) return showToast("Bitte zuerst einen Namen anklicken");
-      moveEmployeeLocal(selectedEmployee, -1);
-    });
-  if (moveDownBtnEl)
-    moveDownBtnEl.addEventListener("click", () => {
-      if (!selectedEmployee) return showToast("Bitte zuerst einen Namen anklicken");
-      moveEmployeeLocal(selectedEmployee, +1);
-    });
+  addEmployeeBtn.addEventListener("click", addEmployee);
+  removeEmployeeBtn.addEventListener("click", removeEmployee);
 
-  if (remarksEl) {
-    remarksEl.addEventListener("input", () => {
-      saveRemarks(currentYear, currentMonth, remarksEl.value || "");
-    });
-  }
-
-  // ===== Init =====
-  buildMonthOptions();
-  buildYearOptions();
-  loadSavedSelections();
-  saveMonthYear();
-  loadAndRender();
-})();
+  // Start
+  loadAndRender().catch((e) => {
+    console.error(e);
+    showToast("Fehler beim Laden");
+  });
+});
