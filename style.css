@@ -289,16 +289,3 @@ td.code-s, td.code-f, td.code-n { background: #fff4b8; } /* neutral gelb wie 'U'
   .grid { overflow-x: auto; }
   table { min-width: 800px; }
 }
-
-
-/* Mini Buttons (Reihenfolge) */
-.btn.mini, button.mini {
-  padding: 8px 10px;
-  min-width: 42px;
-  font-weight: 700;
-}
-.divider{
-  width: 12px;
-  height: 1px;
-  display: inline-block;
-}
