@@ -289,3 +289,71 @@ td.code-s, td.code-f, td.code-n { background: #fff4b8; } /* neutral gelb wie 'U'
   .grid { overflow-x: auto; }
   table { min-width: 800px; }
 }
+/* ================================
+   Reorder Buttons (▲/▼) – nicer UI
+   ================================ */
+
+.namecell .namewrap{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.namecell .empname{
+  flex:1;
+  font-weight:600;
+}
+
+/* kleine Button-Gruppe rechts */
+.namecell .reorder-btn{
+  width:26px;
+  height:22px;
+  padding:0;
+  border:1px solid #9fb8d8;
+  background:#f7fbff;
+  color:#1f4e79;
+  border-radius:6px;
+  cursor:pointer;
+  line-height:1;
+  font-size:14px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow:0 1px 0 rgba(0,0,0,0.05);
+  transition:transform .05s ease, background .15s ease, border-color .15s ease;
+}
+
+.namecell .reorder-btn:hover{
+  background:#e9f3ff;
+  border-color:#6fa3d8;
+}
+
+.namecell .reorder-btn:active{
+  transform:translateY(1px);
+}
+
+.namecell .reorder-btn:focus{
+  outline:none;
+  box-shadow:0 0 0 3px rgba(90, 160, 255, 0.35);
+}
+
+/* bessere Trefferfläche am Handy/Tablet */
+@media (pointer: coarse){
+  .namecell .reorder-btn{
+    width:34px;
+    height:28px;
+    font-size:16px;
+    border-radius:8px;
+  }
+}
+
+/* Optional: Name-Zelle etwas breiter/komfortabler */
+.namecell{
+  min-width:170px;
+  white-space:nowrap;
+}
+
+/* Optional: Pfeile wirken wie eine Einheit (Up/Down nebeneinander) */
+.namecell .reorder-btn + .reorder-btn{
+  margin-left:2px;
+}
