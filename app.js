@@ -74,70 +74,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const currentDate = new Date(YEAR_START, 0, 1);
 
   let currentNames = [];
-  // Persisted employee order (localStorage key). We keep a stable order across page reloads
-  const ORDER_KEY = 'DienstgruppeD_order';
-
-  /**
-   * Load the stored order from localStorage.
-   * @returns {string[]}
-   */
-  function loadOrder() {
-    try {
-      const raw = localStorage.getItem(ORDER_KEY);
-      if (!raw) return [];
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch (_) {
-      return [];
-    }
-  }
-
-  /**
-   * Save the given order into localStorage.
-   * @param {string[]} names
-   */
-  function saveOrder(names) {
-    try {
-      localStorage.setItem(ORDER_KEY, JSON.stringify(names));
-    } catch (_) {
-      /* ignore storage errors */
-    }
-  }
-
-  /**
-   * Apply a persisted order to an array of names. Any names not present in the
-   * stored order will be appended to the end of the list. This ensures that
-   * newly added employees still appear even if they weren’t previously ordered.
-   * @param {string[]} names
-   * @returns {string[]}
-   */
-  function applyOrder(names) {
-    const order = loadOrder();
-    if (!order || !order.length) return names.slice();
-    const set = new Set(names);
-    // Only include names that still exist
-    const filteredOrder = order.filter((n) => set.has(n));
-    const extras = names.filter((n) => !filteredOrder.includes(n));
-    return [...filteredOrder, ...extras];
-  }
-
-  /**
-   * Move a name within the currentNames list from one index to another and persist
-   * the new order. If the target index is invalid, nothing happens.
-   * @param {number} from
-   * @param {number} to
-   */
-  function moveName(from, to) {
-    const arr = currentNames.slice();
-    if (to < 0 || to >= arr.length || from < 0 || from >= arr.length) return;
-    const [item] = arr.splice(from, 1);
-    arr.splice(to, 0, item);
-    currentNames = arr;
-    saveOrder(arr);
-    // Rebuild the dropdown and re-render the grid
-    rebuildMeSelect(currentNames);
-    renderGrid(currentNames, gridMain, {});
-  }
   let selectedCode = null;
   let overrideMap = {}; // `${name}|${day}` => +1 / -1
   const holidayCache = {};
@@ -468,15 +404,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     html += `</tr></thead><tbody>`;
 
-    (namesArr || []).forEach((name, idx) => {
-      // Name column: include move up/down buttons
-      let nameCell = `<td class="name-col name-click" data-idx="${idx}">`;
-      nameCell += `<span class="emp-name">${name}</span>`;
-      // Up/down controls
-      nameCell += `<button class="emp-move emp-up" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''}>▲</button>`;
-      nameCell += `<button class="emp-move emp-down" data-idx="${idx}" ${idx === (namesArr.length - 1) ? 'disabled' : ''}>▼</button>`;
-      nameCell += `</td>`;
-      html += `<tr data-name="${encodeURIComponent(name)}">${nameCell}`;
+    (namesArr || []).forEach((name) => {
+      html += `<tr data-name="${encodeURIComponent(name)}"><td class="name-col name-click">${name}</td>`;
       for (let d = 1; d <= daysInMonth; d++) {
         const dt = new Date(y, mIdx, d);
         let classes = ["cell"];
@@ -535,22 +464,6 @@ document.addEventListener("DOMContentLoaded", () => {
         await applyCode(name, day, selectedCode);
       });
     });
-
-    // Attach reorder event listeners. Moving names only affects order, not other values.
-    container.querySelectorAll('button.emp-up').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        const idx = parseInt(btn.getAttribute('data-idx'), 10);
-        moveName(idx, idx - 1);
-      });
-    });
-    container.querySelectorAll('button.emp-down').forEach((btn) => {
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        const idx = parseInt(btn.getAttribute('data-idx'), 10);
-        moveName(idx, idx + 1);
-      });
-    });
   }
 
   async function applyCode(name, day, code) {
@@ -586,8 +499,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 1) Namen
     currentNames = await loadActiveEmployees();
-    // Apply persisted order to the names so that a user-defined order is respected.
-    currentNames = applyOrder(currentNames);
     rebuildMeSelect(currentNames);
 
     // 2) Werte (Dienstplan)
