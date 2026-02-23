@@ -289,3 +289,31 @@ td.code-s, td.code-f, td.code-n { background: #fff4b8; } /* neutral gelb wie 'U'
   .grid { overflow-x: auto; }
   table { min-width: 800px; }
 }
+/* ============================= */
+/* SORTIERMODUS – Mitarbeiter    */
+/* ============================= */
+
+.emp-move {
+  display: none;
+  margin-left: 6px;
+  font-size: 11px;
+  padding: 3px 7px;
+  border-radius: 8px;
+  border: 1px solid #c9d7e3;
+  background: #f3f8fc;
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.emp-move:hover {
+  background: #dff0ff;
+}
+
+.sort-mode .emp-move {
+  display: inline-flex;
+}
+
+#toggleSortMode.active {
+  background: var(--pol-blue);
+  color: #fff;
+}
