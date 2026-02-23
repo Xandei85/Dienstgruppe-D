@@ -142,6 +142,32 @@ document.addEventListener("DOMContentLoaded", () => {
   let overrideMap = {}; // `${name}|${day}` => +1 / -1
   const holidayCache = {};
 
+  // ---------------- SORTIERMODUS ----------------
+
+let sortMode = localStorage.getItem("dg_sort_mode") === "1";
+
+function applySortMode() {
+  document.body.classList.toggle("sort-mode", sortMode);
+
+  const btn = document.getElementById("toggleSortMode");
+  if (btn) {
+    btn.classList.toggle("active", sortMode);
+    btn.textContent = sortMode ? "Sortieren: AN" : "Sortieren";
+  }
+}
+
+function initSortMode() {
+  const sortBtn = document.getElementById("toggleSortMode");
+  if (!sortBtn) return;
+
+  sortBtn.addEventListener("click", () => {
+    sortMode = !sortMode;
+    localStorage.setItem("dg_sort_mode", sortMode ? "1" : "0");
+    applySortMode();
+  });
+
+  applySortMode();
+}
   // -------- Ferien / Feiertage / Gelbpattern --------
   function isFerien(date) {
     const m = date.getMonth() + 1;
@@ -650,6 +676,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // -------- Events --------
   buildMonthYearSelects();
   buildLegend();
+  initSortMode();
 
   prevBtn.addEventListener("click", async () => {
     currentDate.setMonth(currentDate.getMonth() - 1);
