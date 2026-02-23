@@ -49,32 +49,28 @@ function lsLoadOverrides({ year, month }) {
 // REST-Helper für Supabase
 async function postToTable(table, payload, conflictCols) {
   const rows = Array.isArray(payload) ? payload : [payload];
-  const headers = {
-    'apikey': sb.key,
-    'Authorization': `Bearer ${sb.key}`,
-    'Content-Type': 'application/json',
-    'Prefer': conflictCols ? `resolution=merge-duplicates,return=representation` : 'return=representation'
-  };
-  const res = await fetch(`${sb.url}/rest/v1/${table}`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(rows)
-  });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-async function fetchFromTable(table, filters, select) {
+
+  // URL bauen + optional on_conflict setzen (wichtig für echtes Upsert)
   const url = new URL(`${sb.url}/rest/v1/${table}`);
-  if (filters) {
-    Object.entries(filters).forEach(([k,v]) => url.searchParams.set(k, `eq.${v}`));
+  if (conflictCols && conflictCols.length) {
+    url.searchParams.set('on_conflict', conflictCols.join(','));
   }
-  url.searchParams.set('select', select || '*');
-  const res = await fetch(url, {
-    headers: {
-      'apikey': sb.key,
-      'Authorization': `Bearer ${sb.key}`
-    }
+
+  const headers = {
+    apikey: sb.key,
+    Authorization: `Bearer ${sb.key}`,
+    "Content-Type": "application/json",
+    Prefer: conflictCols
+      ? "resolution=merge-duplicates,return=representation"
+      : "return=representation",
+  };
+
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers,
+    body: JSON.stringify(rows),
   });
+
   if (!res.ok) throw new Error(await res.text());
   return res.json();
 }
