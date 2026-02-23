@@ -660,7 +660,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth() + 1;
       const txt = remarksTA.value || "";
-      if (window.saveRemarks) await window.saveRemarks({ year: y, month: m, text: txt });
+      if (window.saveRemarks) await window.saveRemarks({ year: y, month: m, remarks: txt });
       showToast("Bemerkungen gespeichert");
     } catch (e) {
       console.error(e);
