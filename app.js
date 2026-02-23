@@ -401,26 +401,39 @@ document.addEventListener("DOMContentLoaded", () => {
     { code: "X", label: "X" },
   ];
 
-  function buildLegend() {
-    if (!legendTop) return;
-    legendTop.innerHTML = "";
-    codes.forEach(({ code, label }) => {
-      const btn = document.createElement("button");
-      btn.className = "legend-btn";
-      btn.dataset.code = code;
-      btn.textContent = label;
-      btn.addEventListener("click", () => {
-        selectedCode = code;
-        document.querySelectorAll(".legend-btn").forEach((b) => {
-          b.classList.toggle("active", b === btn);
-        });
-        showToast(
-          "Modus: " + label + (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : "")
-        );
+ function buildLegend() {
+  if (!legendTop) return;
+  legendTop.innerHTML = "";
+
+  codes.forEach(({ code, label }) => {
+    const btn = document.createElement("button");
+    btn.className = "legend-btn";
+    btn.dataset.code = code;
+    btn.textContent = label;
+
+    btn.addEventListener("click", () => {
+      selectedCode = code;
+      document.querySelectorAll(".legend-btn").forEach((b) => {
+        b.classList.toggle("active", b === btn);
       });
-      legendTop.appendChild(btn);
+
+      showToast(
+        "Modus: " + label +
+        (meSelect.value ? ` (nur Zeile: ${meSelect.value})` : "")
+      );
     });
-  }
+
+    legendTop.appendChild(btn);
+  });
+
+  // ===== HIER EINFÜGEN =====
+  const sortBtn = document.createElement("button");
+  sortBtn.id = "toggleSortMode";
+  sortBtn.className = "legend-btn";
+  sortBtn.textContent = "Sortieren";
+  legendTop.appendChild(sortBtn);
+  // ===== ENDE EINFÜGT =====
+}
 
   // -------- Render Grid --------
   function getCodeClass(val) {
